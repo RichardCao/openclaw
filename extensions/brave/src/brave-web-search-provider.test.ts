@@ -82,4 +82,9 @@ describe("brave web search provider", () => {
       "https://proxy.example.com/custom-prefix/res/v1/web/search",
     );
   });
+
+  it("rejects invalid Brave base URLs instead of silently falling back", () => {
+    expect(resolveBraveEndpoint("proxy.example.com", "web")).toBeUndefined();
+    expect(resolveBraveEndpoint("ftp://proxy.example.com/resolver/v1/", "web")).toBeUndefined();
+  });
 });

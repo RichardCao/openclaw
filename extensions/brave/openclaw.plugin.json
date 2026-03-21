@@ -31,7 +31,8 @@
             "type": ["string", "object"]
           },
           "baseUrl": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^https?://.+"
           },
           "mode": {
             "type": "string",

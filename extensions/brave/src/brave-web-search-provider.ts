@@ -131,7 +131,7 @@ function resolveBraveBaseUrl(brave?: BraveConfig): string {
   return configured || BRAVE_BASE_URL;
 }
 
-function resolveBraveEndpoint(baseUrl: string, mode: "web" | "llm-context"): string {
+function resolveBraveEndpoint(baseUrl: string, mode: "web" | "llm-context"): string | undefined {
   const pathname = mode === "llm-context" ? BRAVE_LLM_CONTEXT_PATH : BRAVE_SEARCH_PATH;
   const trimmed = baseUrl.trim();
   if (!trimmed) {
@@ -140,16 +140,13 @@ function resolveBraveEndpoint(baseUrl: string, mode: "web" | "llm-context"): str
 
   try {
     const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return undefined;
+    }
     const currentPath = url.pathname.replace(/\/$/, "");
     const suffix = pathname.replace(/^\/res\/v1/, "");
 
-    // Treat `/.../v1` roots as already pointing at a Brave-compatible API root,
-    // while still letting plain hosts or path prefixes append the full Brave path.
-    if (
-      currentPath.endsWith("/res/v1") ||
-      currentPath.endsWith("/resolver/v1") ||
-      /\/v\d+$/.test(currentPath)
-    ) {
+    if (/\/v\d+$/.test(currentPath)) {
       url.pathname = `${currentPath}${suffix}`;
       return url.toString();
     }
@@ -157,7 +154,7 @@ function resolveBraveEndpoint(baseUrl: string, mode: "web" | "llm-context"): str
     url.pathname = `${currentPath}${pathname}`;
     return url.toString();
   } catch {
-    return new URL(pathname, BRAVE_BASE_URL).toString();
+    return undefined;
   }
 }
 
@@ -243,7 +240,7 @@ async function runBraveLlmContextSearch(params: {
   query: string;
   apiKey: string;
   timeoutSeconds: number;
-  baseUrl: string;
+  endpoint: string;
   country?: string;
   search_lang?: string;
   freshness?: string;
@@ -256,7 +253,7 @@ async function runBraveLlmContextSearch(params: {
   }>;
   sources?: BraveLlmContextResponse["sources"];
 }> {
-  const url = new URL(resolveBraveEndpoint(params.baseUrl, "llm-context"));
+  const url = new URL(params.endpoint);
   url.searchParams.set("q", params.query);
   if (params.country) {
     url.searchParams.set("country", params.country);
@@ -297,7 +294,7 @@ async function runBraveWebSearch(params: {
   count: number;
   apiKey: string;
   timeoutSeconds: number;
-  baseUrl: string;
+  endpoint: string;
   country?: string;
   search_lang?: string;
   ui_lang?: string;
@@ -305,7 +302,7 @@ async function runBraveWebSearch(params: {
   dateAfter?: string;
   dateBefore?: string;
 }): Promise<Array<Record<string, unknown>>> {
-  const url = new URL(resolveBraveEndpoint(params.baseUrl, "web"));
+  const url = new URL(params.endpoint);
   url.searchParams.set("q", params.query);
   url.searchParams.set("count", String(params.count));
   if (params.country) {
@@ -425,12 +422,23 @@ function missingBraveKeyPayload() {
   };
 }
 
+function invalidBraveBaseUrlPayload(baseUrl: string) {
+  return {
+    error: "invalid_brave_base_url",
+    message:
+      `Brave webSearch.baseUrl must be an absolute http(s) URL, got "${baseUrl}". ` +
+      "Use a value like https://proxy.example.com or https://proxy.example.com/resolver/v1/.",
+    docs: "https://docs.openclaw.ai/tools/web",
+  };
+}
+
 function createBraveToolDefinition(
   searchConfig?: SearchConfigRecord,
 ): WebSearchProviderToolDefinition {
   const braveConfig = resolveBraveConfig(searchConfig);
   const braveMode = resolveBraveMode(braveConfig);
   const braveBaseUrl = resolveBraveBaseUrl(braveConfig);
+  const braveEndpoint = resolveBraveEndpoint(braveBaseUrl, braveMode);
 
   return {
     description:
@@ -442,6 +450,9 @@ function createBraveToolDefinition(
       const apiKey = resolveBraveApiKey(searchConfig);
       if (!apiKey) {
         return missingBraveKeyPayload();
+      }
+      if (!braveEndpoint) {
+        return invalidBraveBaseUrlPayload(braveBaseUrl);
       }
 
       const params = args as Record<string, unknown>;
@@ -545,7 +556,7 @@ function createBraveToolDefinition(
       const cacheKey = buildSearchCacheKey([
         "brave",
         braveMode,
-        braveBaseUrl,
+        braveEndpoint,
         query,
         resolveSearchCount(count, DEFAULT_SEARCH_COUNT),
         country,
@@ -569,7 +580,7 @@ function createBraveToolDefinition(
           query,
           apiKey,
           timeoutSeconds,
-          baseUrl: braveBaseUrl,
+          endpoint: braveEndpoint,
           country: country ?? undefined,
           search_lang: normalizedLanguage.search_lang,
           freshness,
@@ -603,7 +614,7 @@ function createBraveToolDefinition(
         count: resolveSearchCount(count, DEFAULT_SEARCH_COUNT),
         apiKey,
         timeoutSeconds,
-        baseUrl: braveBaseUrl,
+        endpoint: braveEndpoint,
         country: country ?? undefined,
         search_lang: normalizedLanguage.search_lang,
         ui_lang: normalizedLanguage.ui_lang,
