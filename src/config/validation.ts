@@ -2,7 +2,7 @@ import path from "node:path";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { CHANNEL_IDS, normalizeChatChannelId } from "../channels/registry.js";
 import { withBundledPluginAllowlistCompat } from "../plugins/bundled-compat.js";
-import { resolveBundledWebSearchPluginIds } from "../plugins/bundled-web-search.js";
+import { listBundledWebSearchPluginIds } from "../plugins/bundled-web-search-ids.js";
 import {
   normalizePluginsConfig,
   resolveEffectiveEnableState,
@@ -360,15 +360,9 @@ function validateConfigObjectWithPluginsBase(
       return compatConfig ?? config;
     }
 
-    const workspaceDir = resolveAgentWorkspaceDir(config, resolveDefaultAgentId(config));
-    const bundledWebSearchPluginIds = resolveBundledWebSearchPluginIds({
-      config,
-      workspaceDir: workspaceDir ?? undefined,
-      env: opts.env,
-    });
     compatConfig = withBundledPluginAllowlistCompat({
       config,
-      pluginIds: bundledWebSearchPluginIds,
+      pluginIds: listBundledWebSearchPluginIds(),
     });
     return compatConfig ?? config;
   };
