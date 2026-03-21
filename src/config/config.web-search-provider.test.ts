@@ -188,6 +188,22 @@ describe("web search provider config", () => {
     expect(res.ok).toBe(true);
   });
 
+  it("accepts brave provider config on the plugin-owned path", () => {
+    const res = validateConfigObjectWithPlugins(
+      buildWebSearchProviderConfig({
+        enabled: true,
+        provider: "brave",
+        providerConfig: {
+          apiKey: "test-key", // pragma: allowlist secret
+          baseUrl: "https://brave-proxy.example.com/resolver/v1/",
+          mode: "web",
+        },
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+  });
+
   it("accepts gemini provider and config", () => {
     const res = validateConfigObjectWithPlugins(
       buildWebSearchProviderConfig({

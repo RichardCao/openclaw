@@ -13,6 +13,10 @@
     "webSearch.mode": {
       "label": "Brave Search Mode",
       "help": "Brave Search mode: web or llm-context."
+    },
+    "webSearch.baseUrl": {
+      "label": "Brave Search Base URL",
+      "help": "Optional Brave Search API base URL or reverse-proxy root."
     }
   },
   "configSchema": {
@@ -25,6 +29,9 @@
         "properties": {
           "apiKey": {
             "type": ["string", "object"]
+          },
+          "baseUrl": {
+            "type": "string"
           },
           "mode": {
             "type": "string",
