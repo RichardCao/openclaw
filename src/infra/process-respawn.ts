@@ -31,6 +31,21 @@ function looksLikeDevEntrypoint(argv1: string): boolean {
   return normalized.endsWith("/src/entry.ts") || normalized.endsWith("/src/index.ts");
 }
 
+function resolveStableSourceTreeEntrypoint(packageRoot: string): string | null {
+  if (isBunRespawnRuntime()) {
+    return null;
+  }
+
+  const runNodePath = path.join(packageRoot, "scripts", "run-node.mjs");
+  const sourceEntryPath = path.join(packageRoot, "src", "entry.ts");
+  const tsconfigPath = path.join(packageRoot, "tsconfig.json");
+  if (existsSync(runNodePath) && existsSync(sourceEntryPath) && existsSync(tsconfigPath)) {
+    return runNodePath;
+  }
+
+  return null;
+}
+
 function isBunRespawnRuntime(): boolean {
   const execBase = path.basename(process.execPath ?? "").toLowerCase();
   return execBase === "bun" || execBase === "bun.exe" || Boolean(process.versions?.bun);
@@ -51,6 +66,11 @@ function resolveStableDistEntrypoint(packageRoot: string, argv1: string): string
 }
 
 function resolveStablePackageEntrypoint(packageRoot: string, argv1: string): string | null {
+  const sourceTreeEntrypoint = resolveStableSourceTreeEntrypoint(packageRoot);
+  if (sourceTreeEntrypoint) {
+    return sourceTreeEntrypoint;
+  }
+
   if (isBunRespawnRuntime()) {
     return resolveStableDistEntrypoint(packageRoot, argv1);
   }

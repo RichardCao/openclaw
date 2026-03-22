@@ -223,6 +223,36 @@ describe("restartGatewayProcessWithFreshPid", () => {
     );
   });
 
+  it("respawns via scripts/run-node.mjs for source checkouts", () => {
+    delete process.env.OPENCLAW_NO_RESPAWN;
+    clearSupervisorHints();
+    setPlatform("linux");
+    const rootPath = path.join(path.parse(process.cwd()).root, "repo", "openclaw");
+    const runNodePath = path.join(rootPath, "scripts", "run-node.mjs");
+    const sourceEntryPath = path.join(rootPath, "src", "entry.ts");
+    const tsconfigPath = path.join(rootPath, "tsconfig.json");
+    process.execArgv = ["--trace-warnings"];
+    process.argv = ["/usr/local/bin/node", path.join(rootPath, "openclaw.mjs"), "--dev", "gateway"];
+    resolveOpenClawPackageRootSyncMock.mockReturnValue(rootPath);
+    existsSyncMock.mockImplementation(
+      (value: unknown) =>
+        value === runNodePath || value === sourceEntryPath || value === tsconfigPath,
+    );
+    spawnMock.mockReturnValue({ pid: 5151, unref: vi.fn() });
+
+    const result = restartGatewayProcessWithFreshPid();
+
+    expect(result).toEqual({ mode: "spawned", pid: 5151 });
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      ["--trace-warnings", runNodePath, "--dev", "gateway"],
+      expect.objectContaining({
+        detached: true,
+        stdio: "inherit",
+      }),
+    );
+  });
+
   it("rewrites pnpm versioned paths to the stable node_modules/openclaw wrapper", () => {
     delete process.env.OPENCLAW_NO_RESPAWN;
     clearSupervisorHints();
