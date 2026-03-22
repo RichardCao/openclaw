@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { captureFullEnv } from "../test-utils/env.js";
 import { SUPERVISOR_HINT_ENV_VARS } from "./supervisor-markers.js";
@@ -191,16 +192,18 @@ describe("restartGatewayProcessWithFreshPid", () => {
     delete process.env.OPENCLAW_NO_RESPAWN;
     clearSupervisorHints();
     setPlatform("linux");
+    const rootPath = path.join(path.parse(process.cwd()).root, "opt", "openclaw");
+    const wrapperPath = path.join(rootPath, "openclaw.mjs");
     process.execArgv = ["--trace-warnings"];
     process.argv = [
       "/usr/local/bin/node",
-      "/opt/openclaw/dist/entry.js",
+      path.join(rootPath, "dist", "entry.js"),
       "gateway",
       "--port",
       "45123",
     ];
-    resolveOpenClawPackageRootSyncMock.mockReturnValue("/opt/openclaw");
-    existsSyncMock.mockImplementation((value: unknown) => value === "/opt/openclaw/openclaw.mjs");
+    resolveOpenClawPackageRootSyncMock.mockReturnValue(rootPath);
+    existsSyncMock.mockImplementation((value: unknown) => value === wrapperPath);
     spawnMock.mockReturnValue({ pid: 4242, unref: vi.fn() });
 
     const result = restartGatewayProcessWithFreshPid();
@@ -208,7 +211,7 @@ describe("restartGatewayProcessWithFreshPid", () => {
     expect(result).toEqual({ mode: "spawned", pid: 4242 });
     expect(spawnMock).toHaveBeenCalledWith(
       process.execPath,
-      ["--trace-warnings", "/opt/openclaw/openclaw.mjs", "gateway", "--port", "45123"],
+      ["--trace-warnings", wrapperPath, "gateway", "--port", "45123"],
       expect.objectContaining({
         detached: true,
         stdio: "inherit",
@@ -220,16 +223,25 @@ describe("restartGatewayProcessWithFreshPid", () => {
     delete process.env.OPENCLAW_NO_RESPAWN;
     clearSupervisorHints();
     setPlatform("linux");
+    const srvRoot = path.join(path.parse(process.cwd()).root, "srv");
+    const stableWrapperPath = path.join(srvRoot, "node_modules", "openclaw", "openclaw.mjs");
     process.execArgv = [];
     process.argv = [
       "/usr/local/bin/node",
-      "/srv/node_modules/.pnpm/openclaw@2026.3.14/node_modules/openclaw/dist/entry.js",
+      path.join(
+        srvRoot,
+        "node_modules",
+        ".pnpm",
+        "openclaw@2026.3.14",
+        "node_modules",
+        "openclaw",
+        "dist",
+        "entry.js",
+      ),
       "gateway",
       "run",
     ];
-    existsSyncMock.mockImplementation(
-      (value: unknown) => value === "/srv/node_modules/openclaw/openclaw.mjs",
-    );
+    existsSyncMock.mockImplementation((value: unknown) => value === stableWrapperPath);
     spawnMock.mockReturnValue({ pid: 5150, unref: vi.fn() });
 
     const result = restartGatewayProcessWithFreshPid();
@@ -237,7 +249,7 @@ describe("restartGatewayProcessWithFreshPid", () => {
     expect(result).toEqual({ mode: "spawned", pid: 5150 });
     expect(spawnMock).toHaveBeenCalledWith(
       process.execPath,
-      ["/srv/node_modules/openclaw/openclaw.mjs", "gateway", "run"],
+      [stableWrapperPath, "gateway", "run"],
       expect.objectContaining({
         detached: true,
         stdio: "inherit",
