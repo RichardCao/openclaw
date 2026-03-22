@@ -1,10 +1,12 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { maybeRepairGatewayServiceConfig } from "./commands/doctor-gateway-services.js";
-import type { DoctorPrompter } from "./commands/doctor-prompter.js";
-import { readBestEffortConfig, type OpenClawConfig } from "./config/config.js";
+import { DEFAULT_GATEWAY_PORT } from "./config/paths.js";
+import { resolveGatewayProgramArguments } from "./daemon/program-args.js";
+import { isBunRuntime, isNodeRuntime } from "./daemon/runtime-binary.js";
+import { resolveGatewayService } from "./daemon/service.js";
 import type { RuntimeEnv } from "./runtime.js";
+import { VERSION } from "./version.js";
 
 export const DEFAULT_GATEWAY_LAUNCH_AGENT_PLIST = "ai.openclaw.gateway.plist";
 
@@ -41,15 +43,53 @@ function createPostinstallRuntime(): RuntimeEnv {
   };
 }
 
-function createPostinstallPrompter(): DoctorPrompter {
+function detectGatewayRuntime(programArguments: string[] | undefined): "node" | "bun" {
+  const runtimePath = programArguments?.[0];
+  if (runtimePath && isBunRuntime(runtimePath)) {
+    return "bun";
+  }
+  return "node";
+}
+
+function resolveGatewayPortFromCommand(params: {
+  programArguments?: readonly string[];
+  environment?: Record<string, string | undefined>;
+}): number {
+  const args = params.programArguments ?? [];
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index]?.trim();
+    if (!current) {
+      continue;
+    }
+    if (current === "--port") {
+      const parsed = Number.parseInt(args[index + 1] ?? "", 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+      continue;
+    }
+    if (current.startsWith("--port=")) {
+      const parsed = Number.parseInt(current.slice("--port=".length), 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  const envPort = Number.parseInt(params.environment?.OPENCLAW_GATEWAY_PORT ?? "", 10);
+  return Number.isFinite(envPort) && envPort > 0 ? envPort : DEFAULT_GATEWAY_PORT;
+}
+
+function mergeServiceEnv(params: {
+  env: Record<string, string | undefined>;
+  currentEnvironment?: Record<string, string>;
+  port: number;
+}): Record<string, string | undefined> {
+  const currentEnvironment = params.currentEnvironment ?? {};
   return {
-    confirm: async () => false,
-    confirmRepair: async () => true,
-    confirmAggressive: async () => false,
-    confirmSkipInNonInteractive: async () => false,
-    select: async <T>(_params: Parameters<DoctorPrompter["select"]>[0], fallback: T) => fallback,
-    shouldRepair: true,
-    shouldForce: false,
+    ...currentEnvironment,
+    HOME: currentEnvironment.HOME?.trim() || params.env.HOME,
+    OPENCLAW_GATEWAY_PORT: String(params.port),
+    OPENCLAW_SERVICE_VERSION: VERSION,
   };
 }
 
@@ -78,19 +118,49 @@ export async function runPostinstallGatewayServiceRepair(params?: {
   }
 
   const runtime = params?.runtime ?? createPostinstallRuntime();
-  const config =
-    (await readBestEffortConfig().catch(() => undefined)) ??
-    ({
-      gateway: {},
-    } satisfies OpenClawConfig);
+  const service = resolveGatewayService();
+  const currentServiceEnv = {
+    ...env,
+    HOME: env.HOME?.trim() || os.homedir(),
+  };
+  const command = await service.readCommand(currentServiceEnv).catch(() => null);
+  if (!command?.programArguments?.length) {
+    return false;
+  }
+
+  const port = resolveGatewayPortFromCommand({
+    programArguments: command.programArguments,
+    environment: command.environment,
+  });
+  const runtimeChoice = detectGatewayRuntime(command.programArguments);
+  const currentExecPath = command.programArguments[0];
+  const nextProgram = await resolveGatewayProgramArguments({
+    port,
+    runtime: runtimeChoice,
+    nodePath: currentExecPath && isNodeRuntime(currentExecPath) ? currentExecPath : undefined,
+  });
+  const nextEnvironment = mergeServiceEnv({
+    env: currentServiceEnv,
+    currentEnvironment: command.environment,
+    port,
+  });
+  const currentVersion = command.environment?.OPENCLAW_SERVICE_VERSION?.trim();
+  const needsRepair =
+    currentVersion !== VERSION ||
+    command.workingDirectory !== nextProgram.workingDirectory ||
+    command.programArguments.join("\0") !== nextProgram.programArguments.join("\0");
+  if (!needsRepair) {
+    return false;
+  }
 
   try {
-    await maybeRepairGatewayServiceConfig(
-      config,
-      config.gateway?.mode === "remote" ? "remote" : "local",
-      runtime,
-      createPostinstallPrompter(),
-    );
+    await service.install({
+      env: currentServiceEnv,
+      stdout: process.stdout,
+      programArguments: nextProgram.programArguments,
+      workingDirectory: nextProgram.workingDirectory,
+      environment: nextEnvironment,
+    });
     return true;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
