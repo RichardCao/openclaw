@@ -5,9 +5,14 @@ import { SUPERVISOR_HINT_ENV_VARS } from "./supervisor-markers.js";
 const spawnMock = vi.hoisted(() => vi.fn());
 const triggerOpenClawRestartMock = vi.hoisted(() => vi.fn());
 const scheduleDetachedLaunchdRestartHandoffMock = vi.hoisted(() => vi.fn());
+const existsSyncMock = vi.hoisted(() => vi.fn());
+const resolveOpenClawPackageRootSyncMock = vi.hoisted(() => vi.fn());
 
 vi.mock("node:child_process", () => ({
   spawn: (...args: unknown[]) => spawnMock(...args),
+}));
+vi.mock("node:fs", () => ({
+  existsSync: (...args: unknown[]) => existsSyncMock(...args),
 }));
 vi.mock("./restart.js", () => ({
   triggerOpenClawRestart: (...args: unknown[]) => triggerOpenClawRestartMock(...args),
@@ -15,6 +20,10 @@ vi.mock("./restart.js", () => ({
 vi.mock("../daemon/launchd-restart-handoff.js", () => ({
   scheduleDetachedLaunchdRestartHandoff: (...args: unknown[]) =>
     scheduleDetachedLaunchdRestartHandoffMock(...args),
+}));
+vi.mock("./openclaw-root.js", () => ({
+  resolveOpenClawPackageRootSync: (...args: unknown[]) =>
+    resolveOpenClawPackageRootSyncMock(...args),
 }));
 
 import { restartGatewayProcessWithFreshPid } from "./process-respawn.js";
@@ -42,6 +51,10 @@ afterEach(() => {
   triggerOpenClawRestartMock.mockClear();
   scheduleDetachedLaunchdRestartHandoffMock.mockReset();
   scheduleDetachedLaunchdRestartHandoffMock.mockReturnValue({ ok: true, pid: 8123 });
+  existsSyncMock.mockReset();
+  existsSyncMock.mockReturnValue(false);
+  resolveOpenClawPackageRootSyncMock.mockReset();
+  resolveOpenClawPackageRootSyncMock.mockReturnValue(null);
   if (originalPlatformDescriptor) {
     Object.defineProperty(process, "platform", originalPlatformDescriptor);
   }
@@ -172,6 +185,87 @@ describe("restartGatewayProcessWithFreshPid", () => {
         stdio: "inherit",
       }),
     );
+  });
+
+  it("respawns via stable wrapper when a package root is known", () => {
+    delete process.env.OPENCLAW_NO_RESPAWN;
+    clearSupervisorHints();
+    setPlatform("linux");
+    process.execArgv = ["--trace-warnings"];
+    process.argv = [
+      "/usr/local/bin/node",
+      "/opt/openclaw/dist/entry.js",
+      "gateway",
+      "--port",
+      "45123",
+    ];
+    resolveOpenClawPackageRootSyncMock.mockReturnValue("/opt/openclaw");
+    existsSyncMock.mockImplementation((value: unknown) => value === "/opt/openclaw/openclaw.mjs");
+    spawnMock.mockReturnValue({ pid: 4242, unref: vi.fn() });
+
+    const result = restartGatewayProcessWithFreshPid();
+
+    expect(result).toEqual({ mode: "spawned", pid: 4242 });
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      ["--trace-warnings", "/opt/openclaw/openclaw.mjs", "gateway", "--port", "45123"],
+      expect.objectContaining({
+        detached: true,
+        stdio: "inherit",
+      }),
+    );
+  });
+
+  it("rewrites pnpm versioned paths to the stable node_modules/openclaw wrapper", () => {
+    delete process.env.OPENCLAW_NO_RESPAWN;
+    clearSupervisorHints();
+    setPlatform("linux");
+    process.execArgv = [];
+    process.argv = [
+      "/usr/local/bin/node",
+      "/srv/node_modules/.pnpm/openclaw@2026.3.14/node_modules/openclaw/dist/entry.js",
+      "gateway",
+      "run",
+    ];
+    existsSyncMock.mockImplementation(
+      (value: unknown) => value === "/srv/node_modules/openclaw/openclaw.mjs",
+    );
+    spawnMock.mockReturnValue({ pid: 5150, unref: vi.fn() });
+
+    const result = restartGatewayProcessWithFreshPid();
+
+    expect(result).toEqual({ mode: "spawned", pid: 5150 });
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      ["/srv/node_modules/openclaw/openclaw.mjs", "gateway", "run"],
+      expect.objectContaining({
+        detached: true,
+        stdio: "inherit",
+      }),
+    );
+    expect(resolveOpenClawPackageRootSyncMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps dev TypeScript entrypoints unchanged", () => {
+    delete process.env.OPENCLAW_NO_RESPAWN;
+    clearSupervisorHints();
+    setPlatform("linux");
+    process.execArgv = ["--import", "tsx"];
+    process.argv = ["/usr/local/bin/node", "/repo/src/entry.ts", "gateway", "run"];
+    spawnMock.mockReturnValue({ pid: 4242, unref: vi.fn() });
+
+    const result = restartGatewayProcessWithFreshPid();
+
+    expect(result).toEqual({ mode: "spawned", pid: 4242 });
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      ["--import", "tsx", "/repo/src/entry.ts", "gateway", "run"],
+      expect.objectContaining({
+        detached: true,
+        stdio: "inherit",
+      }),
+    );
+    expect(resolveOpenClawPackageRootSyncMock).not.toHaveBeenCalled();
   });
 
   it("returns supervised when OPENCLAW_LAUNCHD_LABEL is set (stock launchd plist)", () => {

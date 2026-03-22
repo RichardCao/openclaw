@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { scheduleDetachedLaunchdRestartHandoff } from "../daemon/launchd-restart-handoff.js";
+import { resolveOpenClawPackageRootSync } from "./openclaw-root.js";
 import { triggerOpenClawRestart } from "./restart.js";
 import { detectRespawnSupervisor } from "./supervisor-markers.js";
 
@@ -17,6 +20,65 @@ function isTruthy(value: string | undefined): boolean {
   }
   const normalized = value.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function normalizeArgPath(value: string): string {
+  return value.replaceAll("\\", "/").toLowerCase();
+}
+
+function looksLikeDevEntrypoint(argv1: string): boolean {
+  const normalized = normalizeArgPath(argv1);
+  return normalized.endsWith("/src/entry.ts") || normalized.endsWith("/src/index.ts");
+}
+
+function resolvePnpmStableWrapperFromArgv1(argv1: string): string | null {
+  const normalized = path.resolve(argv1);
+  const marker = `${path.sep}node_modules${path.sep}.pnpm${path.sep}`;
+  const markerIndex = normalized.lastIndexOf(marker);
+  if (markerIndex === -1) {
+    return null;
+  }
+
+  const suffix = normalized.slice(markerIndex + marker.length);
+  const suffixParts = suffix.split(path.sep);
+  if (suffixParts.length < 3) {
+    return null;
+  }
+  if (suffixParts[1] !== "node_modules" || suffixParts[2] !== "openclaw") {
+    return null;
+  }
+
+  const stableRoot = path.join(normalized.slice(0, markerIndex), "node_modules", "openclaw");
+  const stableWrapper = path.join(stableRoot, "openclaw.mjs");
+  return existsSync(stableWrapper) ? stableWrapper : null;
+}
+
+function resolveStableRespawnArgs(): string[] {
+  const currentArgs = [...process.execArgv, ...process.argv.slice(1)];
+  const argv1 = process.argv[1]?.trim();
+  if (!argv1 || looksLikeDevEntrypoint(argv1)) {
+    return currentArgs;
+  }
+
+  const pnpmWrapper = resolvePnpmStableWrapperFromArgv1(argv1);
+  if (pnpmWrapper) {
+    return [...process.execArgv, pnpmWrapper, ...process.argv.slice(2)];
+  }
+
+  const packageRoot = resolveOpenClawPackageRootSync({
+    argv1,
+    cwd: process.cwd(),
+  });
+  if (!packageRoot) {
+    return currentArgs;
+  }
+
+  const wrapperPath = path.join(packageRoot, "openclaw.mjs");
+  if (!existsSync(wrapperPath)) {
+    return currentArgs;
+  }
+
+  return [...process.execArgv, wrapperPath, ...process.argv.slice(2)];
 }
 
 /**
@@ -71,7 +133,7 @@ export function restartGatewayProcessWithFreshPid(): GatewayRespawnResult {
   }
 
   try {
-    const args = [...process.execArgv, ...process.argv.slice(1)];
+    const args = resolveStableRespawnArgs();
     const child = spawn(process.execPath, args, {
       env: process.env,
       detached: true,
