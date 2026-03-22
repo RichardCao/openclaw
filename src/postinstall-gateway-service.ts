@@ -9,6 +9,7 @@ import type { RuntimeEnv } from "./runtime.js";
 import { VERSION } from "./version.js";
 
 export const DEFAULT_GATEWAY_LAUNCH_AGENT_PLIST = "ai.openclaw.gateway.plist";
+const DISABLE_LAUNCHAGENT_MARKER = path.join(".openclaw", "disable-launchagent");
 
 function resolveLaunchAgentsDir(env: Record<string, string | undefined>): string {
   const home = env.HOME?.trim() || os.homedir();
@@ -41,6 +42,32 @@ function createPostinstallRuntime(): RuntimeEnv {
       throw new Error("postinstall repair must not call runtime.exit()");
     },
   };
+}
+
+function buildDefaultLaunchAgentEnv(params: {
+  env: Record<string, string | undefined>;
+  currentEnvironment?: Record<string, string | undefined>;
+}): Record<string, string | undefined> {
+  const currentEnvironment = params.currentEnvironment ?? {};
+  const targetEnv: Record<string, string | undefined> = {
+    ...currentEnvironment,
+    HOME: currentEnvironment.HOME?.trim() || params.env.HOME?.trim() || os.homedir(),
+  };
+  delete targetEnv.OPENCLAW_PROFILE;
+  delete targetEnv.OPENCLAW_LAUNCHD_LABEL;
+  return targetEnv;
+}
+
+async function hasDisabledLaunchAgentMarker(
+  env: Record<string, string | undefined>,
+): Promise<boolean> {
+  const home = env.HOME?.trim() || os.homedir();
+  try {
+    await fs.access(path.join(home, DISABLE_LAUNCHAGENT_MARKER));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function detectGatewayRuntime(programArguments: string[] | undefined): "node" | "bun" {
@@ -85,12 +112,15 @@ function mergeServiceEnv(params: {
   port: number;
 }): Record<string, string | undefined> {
   const currentEnvironment = params.currentEnvironment ?? {};
-  return {
+  const nextEnv: Record<string, string | undefined> = {
     ...currentEnvironment,
     HOME: currentEnvironment.HOME?.trim() || params.env.HOME,
     OPENCLAW_GATEWAY_PORT: String(params.port),
     OPENCLAW_SERVICE_VERSION: VERSION,
   };
+  delete nextEnv.OPENCLAW_PROFILE;
+  delete nextEnv.OPENCLAW_LAUNCHD_LABEL;
+  return nextEnv;
 }
 
 export async function runPostinstallGatewayServiceRepair(params?: {
@@ -119,12 +149,16 @@ export async function runPostinstallGatewayServiceRepair(params?: {
 
   const runtime = params?.runtime ?? createPostinstallRuntime();
   const service = resolveGatewayService();
-  const currentServiceEnv = {
-    ...env,
-    HOME: env.HOME?.trim() || os.homedir(),
-  };
-  const command = await service.readCommand(currentServiceEnv).catch(() => null);
+  const lookupEnv = buildDefaultLaunchAgentEnv({ env });
+  const command = await service.readCommand(lookupEnv).catch(() => null);
   if (!command?.programArguments?.length) {
+    return false;
+  }
+  const repairEnv = buildDefaultLaunchAgentEnv({
+    env,
+    currentEnvironment: command.environment,
+  });
+  if (await hasDisabledLaunchAgentMarker(repairEnv)) {
     return false;
   }
 
@@ -138,9 +172,10 @@ export async function runPostinstallGatewayServiceRepair(params?: {
     port,
     runtime: runtimeChoice,
     nodePath: currentExecPath && isNodeRuntime(currentExecPath) ? currentExecPath : undefined,
+    bunPath: currentExecPath && isBunRuntime(currentExecPath) ? currentExecPath : undefined,
   });
   const nextEnvironment = mergeServiceEnv({
-    env: currentServiceEnv,
+    env: repairEnv,
     currentEnvironment: command.environment,
     port,
   });
@@ -155,7 +190,7 @@ export async function runPostinstallGatewayServiceRepair(params?: {
 
   try {
     await service.install({
-      env: currentServiceEnv,
+      env: repairEnv,
       stdout: process.stdout,
       programArguments: nextProgram.programArguments,
       workingDirectory: nextProgram.workingDirectory,

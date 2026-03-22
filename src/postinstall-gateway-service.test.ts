@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const readdirMock = vi.hoisted(() => vi.fn());
+const accessMock = vi.hoisted(() => vi.fn());
 const readCommandMock = vi.hoisted(() => vi.fn());
 const installMock = vi.hoisted(() => vi.fn());
 const resolveGatewayProgramArgumentsMock = vi.hoisted(() => vi.fn());
@@ -8,8 +9,10 @@ const resolveGatewayProgramArgumentsMock = vi.hoisted(() => vi.fn());
 vi.mock("node:fs/promises", () => ({
   default: {
     readdir: readdirMock,
+    access: accessMock,
   },
   readdir: readdirMock,
+  access: accessMock,
 }));
 
 vi.mock("./daemon/service.js", () => ({
@@ -31,6 +34,7 @@ describe("postinstall gateway service repair", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     readdirMock.mockResolvedValue([]);
+    accessMock.mockRejectedValue(new Error("ENOENT"));
     readCommandMock.mockResolvedValue({
       programArguments: [
         "/usr/bin/node",
@@ -99,6 +103,9 @@ describe("postinstall gateway service repair", () => {
     });
 
     expect(result).toBe(true);
+    expect(readCommandMock).toHaveBeenCalledWith({
+      HOME: "/Users/test",
+    });
     expect(installMock).toHaveBeenCalledWith(
       expect.objectContaining({
         env: expect.objectContaining({
@@ -115,11 +122,14 @@ describe("postinstall gateway service repair", () => {
           HOME: "/Users/test",
           OPENCLAW_CONFIG_PATH: "/Users/test/.openclaw/custom.json",
           OPENCLAW_GATEWAY_TOKEN: "env-token",
-          OPENCLAW_PROFILE: "work",
           OPENCLAW_GATEWAY_PORT: "18789",
           OPENCLAW_SERVICE_VERSION: expect.any(String),
         }),
       }),
+    );
+    expect(installMock.mock.calls[0]?.[0]?.environment).not.toHaveProperty("OPENCLAW_PROFILE");
+    expect(installMock.mock.calls[0]?.[0]?.environment).not.toHaveProperty(
+      "OPENCLAW_LAUNCHD_LABEL",
     );
   });
 
@@ -149,6 +159,38 @@ describe("postinstall gateway service repair", () => {
 
     expect(result).toBe(false);
     expect(installMock).not.toHaveBeenCalled();
+  });
+
+  it("skips repair when disable-launchagent marker is present", async () => {
+    readdirMock.mockResolvedValue(["ai.openclaw.gateway.plist"]);
+    readCommandMock.mockResolvedValue({
+      programArguments: [
+        "/usr/bin/node",
+        "/opt/homebrew/bin/openclaw",
+        "gateway",
+        "--port",
+        "18789",
+      ],
+      environment: {
+        HOME: "/Users/managed",
+      },
+      workingDirectory: "/opt/homebrew/lib/node_modules/openclaw",
+    });
+
+    accessMock.mockResolvedValue(undefined);
+
+    const result = await runPostinstallGatewayServiceRepair({
+      platform: "darwin",
+      env: {
+        HOME: "/Users/test",
+        OPENCLAW_PROFILE: "work",
+        npm_config_global: "true",
+      },
+    });
+
+    expect(result).toBe(false);
+    expect(installMock).not.toHaveBeenCalled();
+    expect(accessMock).toHaveBeenCalledWith("/Users/managed/.openclaw/disable-launchagent");
   });
 
   it("skips when the installed LaunchAgent already matches the current package", async () => {
@@ -221,6 +263,51 @@ describe("postinstall gateway service repair", () => {
     expect(result).toBe(false);
     expect(runtime.error).toHaveBeenCalledWith(
       expect.stringContaining("LaunchAgent repair skipped: bootstrap failed"),
+    );
+  });
+
+  it("reuses the existing bun runtime path during repair", async () => {
+    readdirMock.mockResolvedValue(["ai.openclaw.gateway.plist"]);
+    readCommandMock.mockResolvedValue({
+      programArguments: [
+        "/Users/test/.bun/bin/bun",
+        "/opt/homebrew/lib/node_modules/openclaw/dist/index.js",
+        "gateway",
+        "--port",
+        "18789",
+      ],
+      environment: {
+        HOME: "/Users/test",
+        OPENCLAW_SERVICE_VERSION: "2026.3.13",
+      },
+      workingDirectory: "/opt/homebrew/lib/node_modules/openclaw",
+    });
+    resolveGatewayProgramArgumentsMock.mockResolvedValue({
+      programArguments: [
+        "/Users/test/.bun/bin/bun",
+        "/opt/homebrew/lib/node_modules/openclaw/dist/index.js",
+        "gateway",
+        "--port",
+        "18789",
+      ],
+      workingDirectory: "/opt/homebrew/lib/node_modules/openclaw",
+    });
+
+    const result = await runPostinstallGatewayServiceRepair({
+      platform: "darwin",
+      env: {
+        HOME: "/Users/test",
+        npm_config_global: "true",
+      },
+    });
+
+    expect(result).toBe(true);
+    expect(resolveGatewayProgramArgumentsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtime: "bun",
+        bunPath: "/Users/test/.bun/bin/bun",
+        nodePath: undefined,
+      }),
     );
   });
 });
