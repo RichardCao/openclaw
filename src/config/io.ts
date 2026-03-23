@@ -1354,6 +1354,7 @@ let runtimeConfigSnapshot: OpenClawConfig | null = null;
 let runtimeConfigSourceSnapshot: OpenClawConfig | null = null;
 let runtimeConfigSnapshotRefreshHandler: RuntimeConfigSnapshotRefreshHandler | null = null;
 let runtimeConfigSnapshotRefreshState: "idle" | "pending" | "failed" = "idle";
+let runtimeConfigSnapshotFailedBrowserConfigJson: string | null = null;
 
 function resolveConfigCacheMs(env: NodeJS.ProcessEnv): number {
   const raw = env.OPENCLAW_CONFIG_CACHE_MS?.trim();
@@ -1388,6 +1389,7 @@ export function setRuntimeConfigSnapshot(
   runtimeConfigSnapshot = config;
   runtimeConfigSourceSnapshot = sourceConfig ?? null;
   runtimeConfigSnapshotRefreshState = "idle";
+  runtimeConfigSnapshotFailedBrowserConfigJson = null;
   clearConfigCache();
 }
 
@@ -1395,6 +1397,7 @@ export function clearRuntimeConfigSnapshot(): void {
   runtimeConfigSnapshot = null;
   runtimeConfigSourceSnapshot = null;
   runtimeConfigSnapshotRefreshState = "idle";
+  runtimeConfigSnapshotFailedBrowserConfigJson = null;
   clearConfigCache();
 }
 
@@ -1404,6 +1407,10 @@ export function getRuntimeConfigSnapshot(): OpenClawConfig | null {
 
 export function getRuntimeConfigSnapshotRefreshState(): "idle" | "pending" | "failed" {
   return runtimeConfigSnapshotRefreshState;
+}
+
+export function getRuntimeConfigSnapshotFailedBrowserConfigJson(): string | null {
+  return runtimeConfigSnapshotFailedBrowserConfigJson;
 }
 
 export function getRuntimeConfigSourceSnapshot(): OpenClawConfig | null {
@@ -1468,6 +1475,7 @@ export function setRuntimeConfigSnapshotRefreshHandler(
   runtimeConfigSnapshotRefreshHandler = refreshHandler;
   if (!refreshHandler) {
     runtimeConfigSnapshotRefreshState = "idle";
+    runtimeConfigSnapshotFailedBrowserConfigJson = null;
   }
 }
 
@@ -1534,6 +1542,7 @@ export async function writeConfigFile(
   const refreshHandler = runtimeConfigSnapshotRefreshHandler;
   if (refreshHandler) {
     runtimeConfigSnapshotRefreshState = "pending";
+    runtimeConfigSnapshotFailedBrowserConfigJson = null;
     try {
       const refreshed = await refreshHandler.refresh({ sourceConfig: nextCfg });
       if (refreshed) {
@@ -1542,6 +1551,7 @@ export async function writeConfigFile(
       runtimeConfigSnapshotRefreshState = "idle";
     } catch (error) {
       runtimeConfigSnapshotRefreshState = "failed";
+      runtimeConfigSnapshotFailedBrowserConfigJson = JSON.stringify(nextCfg.browser ?? null);
       try {
         refreshHandler.clearOnRefreshFailure?.();
       } catch {
@@ -1564,6 +1574,7 @@ export async function writeConfigFile(
   if (hadRuntimeSnapshot) {
     clearRuntimeConfigSnapshot();
     runtimeConfigSnapshotRefreshState = "idle";
+    runtimeConfigSnapshotFailedBrowserConfigJson = null;
   }
   // When we had no runtime snapshot, keep callers reading from disk/cache so external/manual
   // edits to openclaw.json remain visible (no stale snapshot).

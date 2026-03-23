@@ -4,6 +4,7 @@ export {
   clearRuntimeConfigSnapshot,
   createConfigIO,
   getRuntimeConfigSnapshot,
+  getRuntimeConfigSnapshotFailedBrowserConfigJson,
   getRuntimeConfigSnapshotRefreshState,
   getRuntimeConfigSourceSnapshot,
   projectConfigOntoRuntimeSourceSnapshot,

@@ -1,6 +1,7 @@
 import {
   createConfigIO,
   getRuntimeConfigSnapshot,
+  getRuntimeConfigSnapshotFailedBrowserConfigJson,
   getRuntimeConfigSnapshotRefreshState,
 } from "../config/config.js";
 import type { OpenClawConfig } from "../config/config.js";
@@ -69,6 +70,27 @@ function applyResolvedConfig(
   }
 }
 
+function shouldMergeDiskBrowserConfig(params: {
+  runtimeCfg: OpenClawConfig | null;
+  refreshState: "idle" | "pending" | "failed";
+  diskCfg: OpenClawConfig;
+}): boolean {
+  if (!params.runtimeCfg) {
+    return false;
+  }
+  if (params.refreshState === "idle") {
+    return true;
+  }
+  if (params.refreshState === "pending") {
+    return false;
+  }
+  const failedBrowserConfigJson = getRuntimeConfigSnapshotFailedBrowserConfigJson();
+  if (!failedBrowserConfigJson) {
+    return false;
+  }
+  return JSON.stringify(params.diskCfg.browser ?? null) !== failedBrowserConfigJson;
+}
+
 export function refreshResolvedBrowserConfigFromDisk(params: {
   current: BrowserServerState;
   refreshConfigFromDisk: boolean;
@@ -95,10 +117,9 @@ export function refreshResolvedBrowserConfigFromDisk(params: {
     applyResolvedConfig(params.current, freshResolved);
     return;
   }
-  const cfg =
-    runtimeCfg && refreshState === "idle"
-      ? { ...runtimeCfg, browser: diskCfg.browser }
-      : (runtimeCfg ?? diskCfg);
+  const cfg = shouldMergeDiskBrowserConfig({ runtimeCfg, refreshState, diskCfg })
+    ? { ...runtimeCfg!, browser: diskCfg.browser }
+    : (runtimeCfg ?? diskCfg);
   const freshResolved = resolveBrowserConfig(cfg.browser, cfg);
   applyResolvedConfig(params.current, freshResolved);
 }

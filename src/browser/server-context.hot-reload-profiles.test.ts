@@ -9,6 +9,7 @@ let cfgDefaultProfile = "openclaw";
 let cfgGatewayPort: number | undefined;
 let runtimeConfigSnapshot: ReturnType<typeof buildConfig> | null = null;
 let runtimeRefreshState: "idle" | "pending" | "failed" = "idle";
+let runtimeFailedBrowserConfigJson: string | null = null;
 let diskConfigError: Error | null = null;
 
 // Simulate module-level cache behavior
@@ -40,6 +41,7 @@ vi.mock("../config/config.js", () => ({
     },
   }),
   getRuntimeConfigSnapshot: () => runtimeConfigSnapshot,
+  getRuntimeConfigSnapshotFailedBrowserConfigJson: () => runtimeFailedBrowserConfigJson,
   getRuntimeConfigSnapshotRefreshState: () => runtimeRefreshState,
   loadConfig: () => {
     // simulate stale loadConfig that doesn't see updates unless cache cleared
@@ -77,6 +79,7 @@ describe("server-context hot-reload profiles", () => {
     cfgGatewayPort = undefined;
     runtimeConfigSnapshot = null;
     runtimeRefreshState = "idle";
+    runtimeFailedBrowserConfigJson = null;
     diskConfigError = null;
     cachedConfig = null; // Clear simulated cache
   });
@@ -347,6 +350,8 @@ describe("server-context hot-reload profiles", () => {
       cfgExecutablePath = "/opt/google/chrome/google-chrome";
       cfgHeadless = false;
       cfgNoSandbox = true;
+      runtimeFailedBrowserConfigJson =
+        refreshState === "failed" ? JSON.stringify(buildConfig().browser ?? null) : null;
 
       refreshResolvedBrowserConfigFromDisk({
         current: state,
@@ -359,6 +364,37 @@ describe("server-context hot-reload profiles", () => {
       expect(state.resolved.noSandbox).toBe(false);
     },
   );
+
+  it("allows later browser-only edits through after an earlier refresh failure", async () => {
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    runtimeConfigSnapshot = buildConfig();
+
+    cfgExecutablePath = "/first/failed/browser";
+    cfgHeadless = false;
+    runtimeRefreshState = "failed";
+    runtimeFailedBrowserConfigJson = JSON.stringify(buildConfig().browser ?? null);
+
+    cfgExecutablePath = "/second/browser/edit";
+    cfgNoSandbox = true;
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(state.resolved.executablePath).toBe("/second/browser/edit");
+    expect(state.resolved.headless).toBe(false);
+    expect(state.resolved.noSandbox).toBe(true);
+  });
 
   it("falls back to the runtime snapshot when disk config is temporarily invalid", async () => {
     const cfg = loadConfig();
