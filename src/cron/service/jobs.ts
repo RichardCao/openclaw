@@ -629,7 +629,7 @@ export function nextWakeAtMs(state: CronServiceState) {
     // Non-repairable malformed schedules (e.g. invalid every/at payloads)
     // should not keep the scheduler in a perpetual 2s poll loop.
     if ((job.state.scheduleErrorCount ?? 0) > 0) {
-      hasEnabledRepairableMissingNextRun = true;
+      hasEnabledRepairableMissingNextRun = job.schedule.kind === "cron";
       continue;
     }
     try {

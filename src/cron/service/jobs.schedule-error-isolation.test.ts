@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CronJob, CronStoreFile } from "../types.js";
-import { recomputeNextRuns, recomputeNextRunsForMaintenance } from "./jobs.js";
+import { nextWakeAtMs, recomputeNextRuns, recomputeNextRunsForMaintenance } from "./jobs.js";
 import type { CronServiceState } from "./state.js";
 
 function createMockState(jobs: CronJob[]): CronServiceState {
@@ -308,5 +308,37 @@ describe("cron schedule error isolation", () => {
     expect(badJob.state.nextRunAtMs).toBeUndefined();
     expect(badJob.state.scheduleErrorCount).toBe(2);
     expect(badJob.state.lastError).toBe("schedule error: previous");
+  });
+
+  it("does not fast-wake malformed every schedules that already have schedule errors", () => {
+    const badJob = createJob({
+      id: "bad-every-wake",
+      name: "Bad Every Wake",
+      schedule: { kind: "every", everyMs: Number.NaN },
+      state: {
+        nextRunAtMs: undefined,
+        scheduleErrorCount: 1,
+        lastError: "schedule error: previous",
+      },
+    });
+    const state = createMockState([badJob]);
+
+    expect(nextWakeAtMs(state)).toBeUndefined();
+  });
+
+  it("still fast-wakes malformed cron schedules that have schedule errors", () => {
+    const badJob = createJob({
+      id: "bad-cron-wake",
+      name: "Bad Cron Wake",
+      schedule: { kind: "cron", expr: "bad cron" },
+      state: {
+        nextRunAtMs: undefined,
+        scheduleErrorCount: 1,
+        lastError: "schedule error: previous",
+      },
+    });
+    const state = createMockState([badJob]);
+
+    expect(nextWakeAtMs(state)).toBe(Date.now() + 2_000);
   });
 });
