@@ -9,6 +9,7 @@ import { runRuntimePostBuild } from "./runtime-postbuild.mjs";
 
 const buildScript = "scripts/tsdown-build.mjs";
 const compilerArgs = [buildScript, "--no-clean"];
+const OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV = "OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV";
 
 const runNodeSourceRoots = ["src", "extensions"];
 const runNodeConfigFiles = ["tsconfig.json", "package.json", "tsdown.config.ts"];
@@ -257,9 +258,26 @@ const resolvePackageRoot = (deps) => {
   return deps.cwd;
 };
 
+const resolveForwardedExecArgv = (env) => {
+  const rawValue = env?.[OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV];
+  if (typeof rawValue !== "string" || rawValue.trim().length === 0) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed.map((value) => String(value));
+  } catch {
+    return null;
+  }
+};
+
 const runOpenClaw = async (deps) => {
   const childEnv = { ...deps.env };
   delete childEnv.OPENCLAW_RUNNER_RUNTIME_CWD;
+  delete childEnv.OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV;
   const nodeProcess = deps.spawn(
     deps.execPath,
     [...deps.execArgv, path.join(deps.packageRoot, "openclaw.mjs"), ...deps.args],
@@ -321,17 +339,18 @@ const writeBuildStamp = (deps) => {
  * }} [params={}]
  */
 export async function runNodeMain(params = {}) {
+  const env = params.env ? { ...params.env } : { ...process.env };
   const deps = {
     spawn: params.spawn ?? spawn,
     spawnSync: params.spawnSync ?? spawnSync,
     fs: params.fs ?? fs,
     stderr: params.stderr ?? process.stderr,
     execPath: params.execPath ?? process.execPath,
-    execArgv: params.execArgv ?? process.execArgv,
+    execArgv: params.execArgv ?? resolveForwardedExecArgv(env) ?? process.execArgv,
     cwd: params.cwd ?? process.cwd(),
     scriptPath: params.scriptPath ?? (params.cwd ? null : process.argv[1]),
     args: params.args ?? process.argv.slice(2),
-    env: params.env ? { ...params.env } : { ...process.env },
+    env,
   };
 
   deps.packageRoot = resolvePackageRoot(deps);

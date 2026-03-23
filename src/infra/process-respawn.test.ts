@@ -259,6 +259,47 @@ describe("restartGatewayProcessWithFreshPid", () => {
     );
   });
 
+  it("drops inspector flags from the intermediate run-node hop but forwards them to the final hop", () => {
+    delete process.env.OPENCLAW_NO_RESPAWN;
+    clearSupervisorHints();
+    setPlatform("linux");
+    const rootPath = path.join(path.parse(process.cwd()).root, "repo", "openclaw");
+    const runNodePath = path.join(rootPath, "scripts", "run-node.mjs");
+    const sourceEntryPath = path.join(rootPath, "src", "entry.ts");
+    const tsconfigPath = path.join(rootPath, "tsconfig.json");
+    process.execArgv = ["--inspect=9229", "--trace-warnings", "--inspect-brk"];
+    process.argv = ["/usr/local/bin/node", path.join(rootPath, "openclaw.mjs"), "gateway"];
+    resolveOpenClawPackageRootSyncMock.mockReturnValue(rootPath);
+    existsSyncMock.mockImplementation(
+      (value: unknown) =>
+        value === runNodePath || value === sourceEntryPath || value === tsconfigPath,
+    );
+    spawnMock.mockReturnValue({ pid: 5151, unref: vi.fn() });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/tmp/openclaw-runtime");
+
+    const result = restartGatewayProcessWithFreshPid();
+    cwdSpy.mockRestore();
+
+    expect(result).toEqual({ mode: "spawned", pid: 5151 });
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      ["--trace-warnings", runNodePath, "gateway"],
+      expect.objectContaining({
+        cwd: "/tmp/openclaw-runtime",
+        detached: true,
+        env: expect.objectContaining({
+          OPENCLAW_RUNNER_RUNTIME_CWD: "/tmp/openclaw-runtime",
+          OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV: JSON.stringify([
+            "--inspect=9229",
+            "--trace-warnings",
+            "--inspect-brk",
+          ]),
+        }),
+        stdio: "inherit",
+      }),
+    );
+  });
+
   it("keeps relative preload flags anchored to the original cwd", () => {
     delete process.env.OPENCLAW_NO_RESPAWN;
     clearSupervisorHints();

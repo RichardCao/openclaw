@@ -8,6 +8,7 @@ import { detectRespawnSupervisor } from "./supervisor-markers.js";
 
 type RespawnMode = "spawned" | "supervised" | "disabled" | "failed";
 const OPENCLAW_RUNNER_RUNTIME_CWD = "OPENCLAW_RUNNER_RUNTIME_CWD";
+const OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV = "OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV";
 
 export type GatewayRespawnResult = {
   mode: RespawnMode;
@@ -105,23 +106,39 @@ function resolvePnpmStableEntrypointFromArgv1(argv1: string): string | null {
   return resolveStablePackageEntrypoint(stableRoot, argv1);
 }
 
+function isInspectorExecArgv(value: string): boolean {
+  return (
+    value === "--inspect" ||
+    value.startsWith("--inspect=") ||
+    value === "--inspect-brk" ||
+    value.startsWith("--inspect-brk=") ||
+    value === "--inspect-port" ||
+    value.startsWith("--inspect-port=") ||
+    value === "--debug-port" ||
+    value.startsWith("--debug-port=")
+  );
+}
+
 function buildSourceTreeRespawnPlan(packageRoot: string): {
   args: string[];
   cwd: string;
   env: NodeJS.ProcessEnv;
 } {
+  const wrapperExecArgv = process.execArgv.filter((value) => !isInspectorExecArgv(value));
+  const runtimeCwd = process.cwd();
   // Keep the original runtime cwd so relative preload/import flags in execArgv
   // keep resolving exactly as they did for the current process.
   return {
     args: [
-      ...process.execArgv,
+      ...wrapperExecArgv,
       path.join(packageRoot, "scripts", "run-node.mjs"),
       ...process.argv.slice(2),
     ],
-    cwd: process.cwd(),
+    cwd: runtimeCwd,
     env: {
       ...process.env,
-      [OPENCLAW_RUNNER_RUNTIME_CWD]: process.cwd(),
+      [OPENCLAW_RUNNER_RUNTIME_CWD]: runtimeCwd,
+      [OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV]: JSON.stringify(process.execArgv),
     },
   };
 }
