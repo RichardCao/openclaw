@@ -97,6 +97,7 @@ const resolveDiscordDmPolicy = createScopedDmSecurityResolver<ResolvedDiscordAcc
     raw
       .trim()
       .replace(/^(discord|user):/i, "")
+      .trim()
       .replace(/^<@!?(\d+)>$/, "$1"),
 });
 
