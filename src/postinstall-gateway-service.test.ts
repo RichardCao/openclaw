@@ -132,11 +132,12 @@ describe("postinstall gateway service repair", () => {
           OPENCLAW_CONFIG_PATH: "/Users/test/.openclaw/custom.json",
           OPENCLAW_GATEWAY_TOKEN: "env-token",
           OPENCLAW_GATEWAY_PORT: "18789",
+          OPENCLAW_PROFILE: "work",
           OPENCLAW_SERVICE_VERSION: expect.any(String),
         }),
       }),
     );
-    expect(installMock.mock.calls[0]?.[0]?.environment).not.toHaveProperty("OPENCLAW_PROFILE");
+    expect(installMock.mock.calls[0]?.[0]?.env).not.toHaveProperty("OPENCLAW_PROFILE");
     expect(installMock.mock.calls[0]?.[0]?.environment).not.toHaveProperty(
       "OPENCLAW_LAUNCHD_LABEL",
     );

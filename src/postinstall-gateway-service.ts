@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { DEFAULT_GATEWAY_PORT } from "./config/paths.js";
 import { resolveGatewayProgramArguments } from "./daemon/program-args.js";
-import { isBunRuntime, isNodeRuntime } from "./daemon/runtime-binary.js";
+import { isBunRuntime } from "./daemon/runtime-binary.js";
 import { resolveGatewayService } from "./daemon/service.js";
 import type { RuntimeEnv } from "./runtime.js";
 import { VERSION } from "./version.js";
@@ -118,7 +118,6 @@ function mergeServiceEnv(params: {
     OPENCLAW_GATEWAY_PORT: String(params.port),
     OPENCLAW_SERVICE_VERSION: VERSION,
   };
-  delete nextEnv.OPENCLAW_PROFILE;
   delete nextEnv.OPENCLAW_LAUNCHD_LABEL;
   return nextEnv;
 }
