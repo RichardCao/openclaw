@@ -286,14 +286,63 @@ const resolveForwardedNodeOptions = (env) => {
   return rawValue;
 };
 
-const resolveBuildEnv = (deps) => {
+const isWatchExecArgv = (value) =>
+  value === "--watch" ||
+  value.startsWith("--watch=") ||
+  value === "--watch-path" ||
+  value.startsWith("--watch-path=") ||
+  value === "--watch-kill-signal" ||
+  value.startsWith("--watch-kill-signal=") ||
+  value === "--watch-preserve-output";
+
+const watchExecArgvConsumesNextValue = (value) =>
+  value === "--watch-path" || value === "--watch-kill-signal";
+
+// Watch mode belongs on the real gateway process, not on the one-shot rebuild step.
+const stripBuildExecArgv = (execArgv) => {
+  const stripped = [];
+  for (let index = 0; index < execArgv.length; index += 1) {
+    const value = execArgv[index];
+    if (isWatchExecArgv(value)) {
+      if (watchExecArgvConsumesNextValue(value)) {
+        index += 1;
+      }
+      continue;
+    }
+    stripped.push(value);
+  }
+  return stripped;
+};
+
+const stripBuildNodeOptions = (value) => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+  const tokens = value.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) ?? [];
+  const stripped = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (isWatchExecArgv(token)) {
+      if (watchExecArgvConsumesNextValue(token)) {
+        index += 1;
+      }
+      continue;
+    }
+    stripped.push(token);
+  }
+  return stripped.length > 0 ? stripped.join(" ") : undefined;
+};
+
+const resolveBuildEnv = (deps, options = {}) => {
   const childEnv = { ...deps.env };
   delete childEnv.OPENCLAW_RUNNER_RUNTIME_CWD;
   delete childEnv.OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV;
   const forwardedNodeOptions = resolveForwardedNodeOptions(childEnv);
   delete childEnv.OPENCLAW_RUNNER_FORWARDED_NODE_OPTIONS;
   if (forwardedNodeOptions) {
-    childEnv.NODE_OPTIONS = forwardedNodeOptions;
+    childEnv.NODE_OPTIONS = options.stripWatchFlags
+      ? stripBuildNodeOptions(forwardedNodeOptions)
+      : forwardedNodeOptions;
   }
   return childEnv;
 };
@@ -394,10 +443,10 @@ export async function runNodeMain(params = {}) {
 
   logRunner("Building TypeScript (dist is stale).", deps);
   const buildCmd = deps.execPath;
-  const buildArgs = [...deps.execArgv, ...compilerArgs];
+  const buildArgs = [...stripBuildExecArgv(deps.execArgv), ...compilerArgs];
   const build = deps.spawn(buildCmd, buildArgs, {
     cwd: deps.packageRoot,
-    env: resolveBuildEnv(deps),
+    env: resolveBuildEnv(deps, { stripWatchFlags: true }),
     stdio: "inherit",
   });
 

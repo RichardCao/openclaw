@@ -358,6 +358,56 @@ describe("run-node script", () => {
     });
   });
 
+  it("strips watch flags from the rebuild child while preserving them for the final openclaw process", async () => {
+    await withTempDir(async (tmp) => {
+      await writeRuntimePostBuildScaffold(tmp);
+
+      const spawnCalls: Array<{
+        cmd: string;
+        args: string[];
+      }> = [];
+      const spawn = (cmd: string, args: string[]) => {
+        spawnCalls.push({
+          cmd,
+          args,
+        });
+        return createExitedProcess(0);
+      };
+
+      const execArgv = [
+        "--watch",
+        "--watch-path",
+        "src",
+        "--watch-preserve-output",
+        "--trace-warnings",
+      ];
+      const exitCode = await runNodeMain({
+        cwd: tmp,
+        args: ["gateway"],
+        execArgv,
+        env: {
+          ...process.env,
+          OPENCLAW_FORCE_BUILD: "1",
+          OPENCLAW_RUNNER_LOG: "0",
+        },
+        spawn,
+        execPath: process.execPath,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(spawnCalls).toEqual([
+        {
+          cmd: process.execPath,
+          args: ["--trace-warnings", "scripts/tsdown-build.mjs", "--no-clean"],
+        },
+        {
+          cmd: process.execPath,
+          args: [...execArgv, path.join(tmp, "openclaw.mjs"), "gateway"],
+        },
+      ]);
+    });
+  });
+
   it("preserves forwarded preload flags for the final openclaw process", async () => {
     await withTempDir(async (tmp) => {
       await writeRuntimePostBuildScaffold(tmp);
@@ -483,6 +533,61 @@ describe("run-node script", () => {
           OPENCLAW_RUNNER_FORWARDED_NODE_OPTIONS: expect.any(String),
         }),
       );
+    });
+  });
+
+  it("strips watch NODE_OPTIONS from the rebuild child while preserving them for the final openclaw process", async () => {
+    await withTempDir(async (tmp) => {
+      await writeRuntimePostBuildScaffold(tmp);
+
+      const spawnCalls: Array<{
+        cmd: string;
+        args: string[];
+        env: NodeJS.ProcessEnv | undefined;
+      }> = [];
+      const spawn = (cmd: string, args: string[], options: unknown) => {
+        const spawnOptions = options as { env?: NodeJS.ProcessEnv } | undefined;
+        spawnCalls.push({
+          cmd,
+          args,
+          env: spawnOptions?.env,
+        });
+        return createExitedProcess(0);
+      };
+
+      const forwardedNodeOptions =
+        "--watch --watch-path=src --watch-preserve-output --max-old-space-size=4096";
+      const exitCode = await runNodeMain({
+        cwd: tmp,
+        args: ["gateway"],
+        execArgv: [],
+        env: {
+          ...process.env,
+          OPENCLAW_FORCE_BUILD: "1",
+          OPENCLAW_RUNNER_LOG: "0",
+          OPENCLAW_RUNNER_FORWARDED_NODE_OPTIONS: forwardedNodeOptions,
+        },
+        spawn,
+        execPath: process.execPath,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(spawnCalls).toEqual([
+        {
+          cmd: process.execPath,
+          args: ["scripts/tsdown-build.mjs", "--no-clean"],
+          env: expect.objectContaining({
+            NODE_OPTIONS: "--max-old-space-size=4096",
+          }),
+        },
+        {
+          cmd: process.execPath,
+          args: [path.join(tmp, "openclaw.mjs"), "gateway"],
+          env: expect.objectContaining({
+            NODE_OPTIONS: forwardedNodeOptions,
+          }),
+        },
+      ]);
     });
   });
 
