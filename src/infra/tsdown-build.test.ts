@@ -75,7 +75,7 @@ describe("tsdown-build script", () => {
         "/tmp/runtime",
       ),
     ).toBe(
-      `--require tsx --loader ${path.join("/tmp/runtime", "loader.mjs")} --import=${path.join("/tmp/runtime", "../importer.mjs")}`,
+      `--require tsx --loader ${path.resolve("/tmp/runtime", "loader.mjs")} --import=${path.resolve("/tmp/runtime", "../importer.mjs")}`,
     );
   });
 });
