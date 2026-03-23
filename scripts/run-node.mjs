@@ -211,7 +211,10 @@ const shouldBuild = (deps) => {
     }
   }
 
-  const currentHead = resolveGitHead(deps);
+  const currentHead = resolveGitHead({
+    cwd: deps.packageRoot,
+    spawnSync: deps.spawnSync,
+  });
   if (currentHead && !stamp.head) {
     return hasSourceMtimeChanged(stamp.mtime, deps);
   }
@@ -283,7 +286,7 @@ const resolveForwardedNodeOptions = (env) => {
   return rawValue;
 };
 
-const runOpenClaw = async (deps) => {
+const resolveBuildEnv = (deps) => {
   const childEnv = { ...deps.env };
   delete childEnv.OPENCLAW_RUNNER_RUNTIME_CWD;
   delete childEnv.OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV;
@@ -292,6 +295,11 @@ const runOpenClaw = async (deps) => {
   if (forwardedNodeOptions) {
     childEnv.NODE_OPTIONS = forwardedNodeOptions;
   }
+  return childEnv;
+};
+
+const runOpenClaw = async (deps) => {
+  const childEnv = resolveBuildEnv(deps);
   const nodeProcess = deps.spawn(
     deps.execPath,
     [...deps.execArgv, path.join(deps.packageRoot, "openclaw.mjs"), ...deps.args],
@@ -328,7 +336,7 @@ const syncRuntimeArtifacts = (deps) => {
 const writeBuildStamp = (deps) => {
   try {
     writeDistBuildStamp({
-      cwd: deps.cwd,
+      cwd: deps.packageRoot,
       fs: deps.fs,
       spawnSync: deps.spawnSync,
     });
@@ -386,10 +394,10 @@ export async function runNodeMain(params = {}) {
 
   logRunner("Building TypeScript (dist is stale).", deps);
   const buildCmd = deps.execPath;
-  const buildArgs = compilerArgs;
+  const buildArgs = [...deps.execArgv, ...compilerArgs];
   const build = deps.spawn(buildCmd, buildArgs, {
     cwd: deps.packageRoot,
-    env: deps.env,
+    env: resolveBuildEnv(deps),
     stdio: "inherit",
   });
 
