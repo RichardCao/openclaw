@@ -129,6 +129,13 @@ export function createBrowserRouteContext(opts: ContextOptions): BrowserRouteCon
 
   const forProfile = (profileName?: string): ProfileContext => {
     const current = state();
+    if (!profileName) {
+      refreshResolvedBrowserConfigFromDisk({
+        current,
+        refreshConfigFromDisk,
+        mode: "cached",
+      });
+    }
     const name = profileName ?? current.resolved.defaultProfile;
     const profile = resolveBrowserProfileWithHotReload({
       current,

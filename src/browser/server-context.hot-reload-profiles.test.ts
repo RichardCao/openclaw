@@ -53,6 +53,7 @@ vi.mock("../config/config.js", () => ({
 
 describe("server-context hot-reload profiles", () => {
   let loadConfig: typeof import("../config/config.js").loadConfig;
+  let createBrowserRouteContext: typeof import("./server-context.js").createBrowserRouteContext;
   let resolveBrowserConfig: typeof import("./config.js").resolveBrowserConfig;
   let resolveProfile: typeof import("./config.js").resolveProfile;
   let refreshResolvedBrowserConfigFromDisk: typeof import("./resolved-config-refresh.js").refreshResolvedBrowserConfigFromDisk;
@@ -61,6 +62,7 @@ describe("server-context hot-reload profiles", () => {
   beforeEach(async () => {
     vi.resetModules();
     ({ loadConfig } = await import("../config/config.js"));
+    ({ createBrowserRouteContext } = await import("./server-context.js"));
     ({ resolveBrowserConfig, resolveProfile } = await import("./config.js"));
     ({ refreshResolvedBrowserConfigFromDisk, resolveBrowserProfileWithHotReload } =
       await import("./resolved-config-refresh.js"));
@@ -169,6 +171,39 @@ describe("server-context hot-reload profiles", () => {
     });
     expect(after?.cdpPort).toBe(19999);
     expect(state.resolved.profiles.openclaw?.cdpPort).toBe(19999);
+  });
+
+  it("forProfile without an explicit name reselects the refreshed default profile", async () => {
+    cfgDefaultProfile = "legacy";
+    cfgProfiles = {
+      legacy: { cdpPort: 18800, color: "#8844FF" },
+    };
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    cfgDefaultProfile = "desktop";
+    cfgProfiles = {
+      desktop: { cdpPort: 19999, color: "#0066CC" },
+    };
+    cachedConfig = null;
+
+    const ctx = createBrowserRouteContext({
+      getState: () => state,
+      refreshConfigFromDisk: true,
+    });
+
+    const profile = ctx.forProfile().profile;
+    expect(profile.name).toBe("desktop");
+    expect(profile.cdpPort).toBe(19999);
+    expect(state.resolved.defaultProfile).toBe("desktop");
+    expect(state.resolved.profiles.legacy).toBeUndefined();
+    expect(state.resolved.profiles.desktop).toBeDefined();
   });
 
   it("listProfiles refreshes config before enumerating profiles", async () => {
