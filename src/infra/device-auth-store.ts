@@ -57,6 +57,12 @@ export function loadDeviceAuthToken(params: {
   });
 }
 
+export function loadCurrentDeviceAuthStore(
+  env: NodeJS.ProcessEnv = process.env,
+): DeviceAuthStore | null {
+  return readStore(resolveDeviceAuthPath(env));
+}
+
 export function storeDeviceAuthToken(params: {
   deviceId: string;
   role: string;
