@@ -6,6 +6,7 @@ let cfgExecutablePath: string | undefined;
 let cfgHeadless = true;
 let cfgNoSandbox = false;
 let cfgDefaultProfile = "openclaw";
+let cfgGatewayPort: number | undefined;
 let runtimeConfigSnapshot: ReturnType<typeof buildConfig> | null = null;
 
 // Simulate module-level cache behavior
@@ -13,6 +14,7 @@ let cachedConfig: ReturnType<typeof buildConfig> | null = null;
 
 function buildConfig() {
   return {
+    gateway: cfgGatewayPort ? { port: cfgGatewayPort } : undefined,
     browser: {
       enabled: true,
       color: "#FF4500",
@@ -64,6 +66,7 @@ describe("server-context hot-reload profiles", () => {
     cfgHeadless = true;
     cfgNoSandbox = false;
     cfgDefaultProfile = "openclaw";
+    cfgGatewayPort = undefined;
     runtimeConfigSnapshot = null;
     cachedConfig = null; // Clear simulated cache
   });
@@ -248,5 +251,38 @@ describe("server-context hot-reload profiles", () => {
     expect(state.resolved.headless).toBe(false);
     expect(state.resolved.noSandbox).toBe(true);
     expect(state.resolved.defaultProfile).toBe("desktop");
+  });
+
+  it("keeps runtime-derived defaults stable while hot-reloading browser config from disk", async () => {
+    cfgGatewayPort = 4000;
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const previousControlPort = resolved.controlPort;
+    const previousCdpPortRangeStart = resolved.cdpPortRangeStart;
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    runtimeConfigSnapshot = buildConfig();
+
+    cfgGatewayPort = 5000;
+    cfgExecutablePath = "/opt/google/chrome/google-chrome";
+    cfgHeadless = false;
+    cfgNoSandbox = true;
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(state.resolved.controlPort).toBe(previousControlPort);
+    expect(state.resolved.cdpPortRangeStart).toBe(previousCdpPortRangeStart);
+    expect(state.resolved.executablePath).toBe("/opt/google/chrome/google-chrome");
+    expect(state.resolved.headless).toBe(false);
+    expect(state.resolved.noSandbox).toBe(true);
   });
 });

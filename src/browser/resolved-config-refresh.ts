@@ -1,4 +1,4 @@
-import { createConfigIO } from "../config/config.js";
+import { createConfigIO, getRuntimeConfigSnapshot } from "../config/config.js";
 import { resolveBrowserConfig, resolveProfile, type ResolvedBrowserProfile } from "./config.js";
 import type { BrowserServerState } from "./server-context.types.js";
 
@@ -73,11 +73,13 @@ export function refreshResolvedBrowserConfigFromDisk(params: {
     return;
   }
 
-  // Route-level browser config hot reload must reflect the latest on-disk browser config,
-  // even when the broader runtime is still holding a stale config snapshot.
-  // Use createConfigIO().loadConfig() directly so browser routes pick up external/manual
-  // openclaw.json edits without flushing the global runtime snapshot or loadConfig() cache.
-  const cfg = createConfigIO().loadConfig();
+  // Route-level browser config hot reload should pick up the latest on-disk browser settings
+  // without bypassing the active runtime snapshot for unrelated root config. This keeps
+  // browser.* edits visible to routes while still honoring runtime-snapshot safety for
+  // derived defaults that depend on non-browser config like gateway.port.
+  const diskCfg = createConfigIO().loadConfig();
+  const runtimeCfg = getRuntimeConfigSnapshot();
+  const cfg = runtimeCfg ? { ...runtimeCfg, browser: diskCfg.browser } : diskCfg;
   const freshResolved = resolveBrowserConfig(cfg.browser, cfg);
   applyResolvedConfig(params.current, freshResolved);
 }
