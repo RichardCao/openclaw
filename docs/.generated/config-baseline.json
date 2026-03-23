@@ -46735,6 +46735,20 @@
       "hasChildren": false
     },
     {
+      "path": "plugins.entries.brave.config.webSearch.baseUrl",
+      "kind": "plugin",
+      "type": "string",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "advanced"
+      ],
+      "label": "Brave Search Base URL",
+      "help": "Optional Brave Search API base URL or reverse-proxy root.",
+      "hasChildren": false
+    },
+    {
       "path": "plugins.entries.brave.config.webSearch.mode",
       "kind": "plugin",
       "type": "string",
