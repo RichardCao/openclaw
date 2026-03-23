@@ -508,7 +508,7 @@ export function createSessionStatusTool(opts?: {
           dropPolicy: queueSettings.dropPolicy,
           showDetails: queueOverrides,
         },
-        includeTranscriptUsage: true,
+        includeTranscriptUsage: !changedModel,
       });
 
       return {
