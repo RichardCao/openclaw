@@ -9,6 +9,7 @@ let cfgDefaultProfile = "openclaw";
 let cfgGatewayPort: number | undefined;
 let runtimeConfigSnapshot: ReturnType<typeof buildConfig> | null = null;
 let runtimeRefreshState: "idle" | "pending" | "failed" = "idle";
+let diskConfigError: Error | null = null;
 
 // Simulate module-level cache behavior
 let cachedConfig: ReturnType<typeof buildConfig> | null = null;
@@ -31,6 +32,9 @@ function buildConfig() {
 vi.mock("../config/config.js", () => ({
   createConfigIO: () => ({
     loadConfig: () => {
+      if (diskConfigError) {
+        throw diskConfigError;
+      }
       // Always return fresh config for createConfigIO to simulate fresh disk read
       return buildConfig();
     },
@@ -71,6 +75,7 @@ describe("server-context hot-reload profiles", () => {
     cfgGatewayPort = undefined;
     runtimeConfigSnapshot = null;
     runtimeRefreshState = "idle";
+    diskConfigError = null;
     cachedConfig = null; // Clear simulated cache
   });
 
@@ -319,4 +324,50 @@ describe("server-context hot-reload profiles", () => {
       expect(state.resolved.noSandbox).toBe(false);
     },
   );
+
+  it("falls back to the runtime snapshot when disk config is temporarily invalid", async () => {
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    runtimeConfigSnapshot = buildConfig();
+    diskConfigError = new Error("invalid config");
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(state.resolved.executablePath).toBeUndefined();
+    expect(state.resolved.headless).toBe(true);
+    expect(state.resolved.noSandbox).toBe(false);
+    expect(state.resolved.defaultProfile).toBe("openclaw");
+  });
+
+  it("still throws disk config errors when no runtime snapshot is active", async () => {
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    diskConfigError = new Error("invalid config");
+
+    expect(() =>
+      refreshResolvedBrowserConfigFromDisk({
+        current: state,
+        refreshConfigFromDisk: true,
+        mode: "cached",
+      }),
+    ).toThrow("invalid config");
+  });
 });

@@ -3,6 +3,7 @@ import {
   getRuntimeConfigSnapshot,
   getRuntimeConfigSnapshotRefreshState,
 } from "../config/config.js";
+import type { OpenClawConfig } from "../config/config.js";
 import { resolveBrowserConfig, resolveProfile, type ResolvedBrowserProfile } from "./config.js";
 import type { BrowserServerState } from "./server-context.types.js";
 
@@ -81,9 +82,19 @@ export function refreshResolvedBrowserConfigFromDisk(params: {
   // without bypassing the active runtime snapshot for unrelated root config. This keeps
   // browser.* edits visible to routes while still honoring runtime-snapshot safety for
   // derived defaults that depend on non-browser config like gateway.port.
-  const diskCfg = createConfigIO().loadConfig();
   const runtimeCfg = getRuntimeConfigSnapshot();
   const refreshState = getRuntimeConfigSnapshotRefreshState();
+  let diskCfg: OpenClawConfig;
+  try {
+    diskCfg = createConfigIO().loadConfig();
+  } catch (error) {
+    if (!runtimeCfg) {
+      throw error;
+    }
+    const freshResolved = resolveBrowserConfig(runtimeCfg.browser, runtimeCfg);
+    applyResolvedConfig(params.current, freshResolved);
+    return;
+  }
   const cfg =
     runtimeCfg && refreshState === "idle"
       ? { ...runtimeCfg, browser: diskCfg.browser }
