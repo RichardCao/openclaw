@@ -259,6 +259,7 @@ async function loadPairingWithFallback(
 async function approvePairingWithFallback(
   opts: DevicesRpcOpts,
   requestId: string,
+  preserveUnknownRequestId = false,
 ): Promise<Record<string, unknown> | null> {
   try {
     return await callGatewayCli("device.pair.approve", opts, { requestId });
@@ -278,7 +279,7 @@ async function approvePairingWithFallback(
       ? await approveDevicePairing(requestId, { callerScopes: fallbackAuth.callerScopes })
       : await approveDevicePairing(requestId);
     if (!approved) {
-      if (fallbackAuth) {
+      if (fallbackAuth && !preserveUnknownRequestId) {
         throw error;
       }
       return null;
@@ -529,7 +530,11 @@ export function registerDevicesCli(program: Command) {
           defaultRuntime.exit(1);
           return;
         }
-        const result = await approvePairingWithFallback(opts, resolvedRequestId);
+        const result = await approvePairingWithFallback(
+          opts,
+          resolvedRequestId,
+          Boolean(requestId?.trim()) && opts.latest !== true,
+        );
         if (!result) {
           defaultRuntime.error("unknown requestId");
           defaultRuntime.exit(1);
