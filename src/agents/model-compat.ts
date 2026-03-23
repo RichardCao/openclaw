@@ -86,6 +86,22 @@ function isOpenAINativeEndpoint(baseUrl: string): boolean {
   }
 }
 
+function isDirectOpenAIStrictBaseUrl(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return (
+      host === "api.openai.com" || host === "chatgpt.com" || host.endsWith(".openai.azure.com")
+    );
+  } catch {
+    const normalized = baseUrl.toLowerCase();
+    return (
+      normalized.includes("api.openai.com") ||
+      normalized.includes("chatgpt.com") ||
+      normalized.includes(".openai.azure.com")
+    );
+  }
+}
+
 function isAnthropicMessagesModel(model: Model<Api>): model is Model<"anthropic-messages"> {
   return model.api === "anthropic-messages";
 }
@@ -135,7 +151,9 @@ export function normalizeModelCompat(model: Model<Api>): Model<Api> {
   const hasStreamingUsageOverride = compat?.supportsUsageInStreaming !== undefined;
   const targetStrictMode =
     compat?.supportsStrictMode ??
-    (hasOpenRouterStrictToolSupportRoute(model) || isOpenRouterBaseUrl(baseUrl)
+    (hasOpenRouterStrictToolSupportRoute(model) ||
+    isOpenRouterBaseUrl(baseUrl) ||
+    isDirectOpenAIStrictBaseUrl(baseUrl)
       ? undefined
       : false);
   if (

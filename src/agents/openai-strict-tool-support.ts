@@ -44,10 +44,18 @@ function resolveExclusiveOpenRouterProvider(model: { compat?: unknown }): string
           providers?: unknown;
         })
       : undefined;
+  const normalizeProviderId = (value: string): string => {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return "";
+    }
+    const slashIndex = normalized.indexOf("/");
+    return slashIndex === -1 ? normalized : normalized.slice(0, slashIndex);
+  };
   const normalizeRoutingList = (value: unknown): string[] =>
     Array.isArray(value)
       ? value
-          .flatMap((entry) => (typeof entry === "string" ? [entry.trim().toLowerCase()] : []))
+          .flatMap((entry) => (typeof entry === "string" ? [normalizeProviderId(entry)] : []))
           .filter(Boolean)
       : [];
   const allowFallbacks = routing?.allowFallbacks ?? routing?.allow_fallbacks;

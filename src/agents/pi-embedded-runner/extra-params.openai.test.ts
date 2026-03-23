@@ -736,6 +736,80 @@ describe("extra-params: OpenAI-compatible tool payloads", () => {
     expect(payload.tools?.[0]?.function?.strict).toBe(true);
   });
 
+  it("preserves function.strict for OpenRouter OpenAI endpoint slugs pinned to OpenAI", () => {
+    const payload = runExtraParamsCase({
+      applyProvider: "openrouter",
+      applyModelId: "openai/gpt-4o",
+      cfg: {
+        agents: {
+          defaults: {
+            models: {
+              "openrouter/openai/gpt-4o": {
+                params: {
+                  provider: {
+                    order: ["openai/turbo"],
+                    allowFallbacks: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      model: makeModel({
+        api: "openai-completions",
+        provider: "openrouter",
+        id: "openai/gpt-4o",
+        baseUrl: "https://openrouter.ai/api/v1",
+      }),
+      payload: {
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "web_search",
+              parameters: { type: "object", properties: {} },
+              strict: true,
+            },
+          },
+        ],
+      },
+    }).payload as {
+      tools?: Array<{ function?: Record<string, unknown> }>;
+    };
+
+    expect(payload.tools?.[0]?.function?.strict).toBe(true);
+  });
+
+  it("keeps function.strict for direct Azure OpenAI routes", () => {
+    const payload = runExtraParamsCase({
+      applyProvider: "azure-openai",
+      applyModelId: "gpt-4o",
+      model: makeModel({
+        api: "openai-completions",
+        provider: "azure-openai",
+        id: "gpt-4o",
+        baseUrl: "https://example.openai.azure.com/openai/v1",
+      }),
+      payload: {
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "web_search",
+              parameters: { type: "object", properties: {} },
+              strict: true,
+            },
+          },
+        ],
+      },
+    }).payload as {
+      tools?: Array<{ function?: Record<string, unknown> }>;
+    };
+
+    expect(payload.tools?.[0]?.function?.strict).toBe(true);
+  });
+
   it("still strips function.strict for other OpenRouter proxy routes", () => {
     const payload = runExtraParamsCase({
       applyProvider: "openrouter",

@@ -295,6 +295,20 @@ describe("normalizeModelCompat", () => {
     expect(supportsStrictMode(normalized)).toBeUndefined();
   });
 
+  it("leaves strict mode available for direct Azure OpenAI routes", () => {
+    const model = {
+      ...baseModel(),
+      provider: "azure-openai",
+      id: "gpt-4o",
+      baseUrl: "https://example.openai.azure.com/openai/v1",
+    };
+    delete (model as { compat?: unknown }).compat;
+    const normalized = normalizeModelCompat(model);
+    expect(supportsDeveloperRole(normalized)).toBe(false);
+    expect(supportsUsageInStreaming(normalized)).toBe(false);
+    expect(supportsStrictMode(normalized)).toBeUndefined();
+  });
+
   it("preserves explicit strict-mode opt-out for OpenRouter OpenAI-backed routes", () => {
     const model = {
       ...baseModel(),
