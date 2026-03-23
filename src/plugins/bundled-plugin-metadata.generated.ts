@@ -272,6 +272,10 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
               apiKey: {
                 type: ["string", "object"],
               },
+              baseUrl: {
+                type: "string",
+                pattern: "^(|https?://.+|.*\\$\\{[^}]+\\}.*)$",
+              },
               mode: {
                 type: "string",
                 enum: ["web", "llm-context"],
@@ -293,6 +297,10 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
         "webSearch.mode": {
           label: "Brave Search Mode",
           help: "Brave Search mode: web or llm-context.",
+        },
+        "webSearch.baseUrl": {
+          label: "Brave Search Base URL",
+          help: "Optional Brave Search API base URL or reverse-proxy root.",
         },
       },
     },
