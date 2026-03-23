@@ -267,7 +267,14 @@ describe("restartGatewayProcessWithFreshPid", () => {
     const runNodePath = path.join(rootPath, "scripts", "run-node.mjs");
     const sourceEntryPath = path.join(rootPath, "src", "entry.ts");
     const tsconfigPath = path.join(rootPath, "tsconfig.json");
-    process.execArgv = ["--inspect=9229", "--trace-warnings", "--inspect-wait", "--inspect-brk"];
+    process.execArgv = [
+      "--inspect=9229",
+      "--inspect-port",
+      "9230",
+      "--trace-warnings",
+      "--inspect-wait",
+      "--inspect-brk",
+    ];
     process.argv = ["/usr/local/bin/node", path.join(rootPath, "openclaw.mjs"), "gateway"];
     resolveOpenClawPackageRootSyncMock.mockReturnValue(rootPath);
     existsSyncMock.mockImplementation(
@@ -291,6 +298,8 @@ describe("restartGatewayProcessWithFreshPid", () => {
           OPENCLAW_RUNNER_RUNTIME_CWD: "/tmp/openclaw-runtime",
           OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV: JSON.stringify([
             "--inspect=9229",
+            "--inspect-port",
+            "9230",
             "--trace-warnings",
             "--inspect-wait",
             "--inspect-brk",
@@ -442,7 +451,8 @@ describe("restartGatewayProcessWithFreshPid", () => {
     const sourceEntryPath = path.join(rootPath, "src", "entry.ts");
     const tsconfigPath = path.join(rootPath, "tsconfig.json");
     process.execArgv = ["--trace-warnings"];
-    process.env.NODE_OPTIONS = '--inspect=9229 --require "./loader.js" --max-old-space-size=4096';
+    process.env.NODE_OPTIONS =
+      '--inspect=9229 --inspect-port 9230 --require "./loader.js" --max-old-space-size=4096';
     process.argv = ["/usr/local/bin/node", path.join(rootPath, "openclaw.mjs"), "gateway"];
     resolveOpenClawPackageRootSyncMock.mockReturnValue(rootPath);
     existsSyncMock.mockImplementation(
@@ -465,7 +475,7 @@ describe("restartGatewayProcessWithFreshPid", () => {
         env: expect.objectContaining({
           NODE_OPTIONS: "--max-old-space-size=4096",
           OPENCLAW_RUNNER_FORWARDED_NODE_OPTIONS:
-            '--inspect=9229 --require "./loader.js" --max-old-space-size=4096',
+            '--inspect=9229 --inspect-port 9230 --require "./loader.js" --max-old-space-size=4096',
         }),
         stdio: "inherit",
       }),

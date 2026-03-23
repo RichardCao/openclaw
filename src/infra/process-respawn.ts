@@ -127,6 +127,10 @@ function isInspectorExecArgv(value: string): boolean {
   );
 }
 
+function inspectorExecArgvConsumesNextValue(value: string): boolean {
+  return value === "--inspect-port" || value === "--debug-port";
+}
+
 function isPreloadExecArgv(value: string): boolean {
   return (
     value === "--import" ||
@@ -146,6 +150,9 @@ function stripIntermediateExecArgv(execArgv: string[]): string[] {
   for (let index = 0; index < execArgv.length; index += 1) {
     const value = execArgv[index];
     if (isInspectorExecArgv(value)) {
+      if (inspectorExecArgvConsumesNextValue(value)) {
+        index += 1;
+      }
       continue;
     }
     if (isPreloadExecArgv(value)) {
@@ -199,6 +206,9 @@ function stripIntermediateNodeOptions(value: string | undefined): string | undef
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (isInspectorExecArgv(token)) {
+      if (inspectorExecArgvConsumesNextValue(token)) {
+        index += 1;
+      }
       continue;
     }
     if (isPreloadExecArgv(token)) {
