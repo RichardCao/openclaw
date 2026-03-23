@@ -213,10 +213,7 @@ async function shouldUseLocalPairingFallback(
     return false;
   }
   const connection = buildGatewayConnectionDetails();
-  if (
-    connection.urlSource !== "local loopback" &&
-    connection.urlSource !== "env OPENCLAW_GATEWAY_URL"
-  ) {
+  if (connection.urlSource !== "local loopback") {
     return false;
   }
   try {

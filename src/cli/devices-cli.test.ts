@@ -471,7 +471,7 @@ describe("devices cli local fallback", () => {
     expect(approveDevicePairing).not.toHaveBeenCalled();
   });
 
-  it("passes env URL overrides through fallback auth resolution", async () => {
+  it("passes env URL overrides through fallback auth resolution without using local fallback", async () => {
     callGateway.mockRejectedValueOnce(new Error("gateway closed (1000): no close reason"));
     buildGatewayConnectionDetails.mockReturnValue({
       url: "ws://127.0.0.1:18789",
@@ -492,17 +492,10 @@ describe("devices cli local fallback", () => {
       },
     });
     verifyDeviceToken.mockResolvedValueOnce({ ok: true });
-    approveDevicePairing.mockResolvedValueOnce({
-      requestId: "req-latest",
-      device: {
-        deviceId: "device-1",
-        publicKey: "pk",
-        approvedAtMs: 1,
-        createdAtMs: 1,
-      },
-    });
 
-    await runDevicesApprove(["req-latest"]);
+    await expect(runDevicesApprove(["req-latest"])).rejects.toThrow(
+      "gateway closed (1000): no close reason",
+    );
 
     expect(resolveGatewayCredentialsWithSecretInputs).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -510,9 +503,7 @@ describe("devices cli local fallback", () => {
         urlOverrideSource: "env",
       }),
     );
-    expect(approveDevicePairing).toHaveBeenCalledWith("req-latest", {
-      callerScopes: ["operator.pairing"],
-    });
+    expect(approveDevicePairing).not.toHaveBeenCalled();
   });
 
   it("does not use local approve fallback for normal closures when config shared auth resolves", async () => {
