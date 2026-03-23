@@ -38,8 +38,12 @@ function expectedBuildSpawn() {
   return [process.execPath, "scripts/tsdown-build.mjs", "--no-clean"];
 }
 
-function expectedOpenClawSpawn(packageRoot: string, ...args: string[]) {
-  return [process.execPath, path.join(packageRoot, "openclaw.mjs"), ...args];
+function expectedOpenClawSpawn(
+  packageRoot: string,
+  args: string[],
+  execArgv: string[] = process.execArgv,
+) {
+  return [process.execPath, ...execArgv, path.join(packageRoot, "openclaw.mjs"), ...args];
 }
 
 describe("run-node script", () => {
@@ -95,7 +99,7 @@ describe("run-node script", () => {
         await expect(fs.readFile(indexPath, "utf-8")).resolves.toContain("sentinel");
         expect(nodeCalls).toEqual([
           [process.execPath, "scripts/tsdown-build.mjs", "--no-clean"],
-          expectedOpenClawSpawn(tmp, "--version"),
+          expectedOpenClawSpawn(tmp, ["--version"]),
         ]);
       });
     },
@@ -148,7 +152,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedBuildSpawn(), expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedBuildSpawn(), expectedOpenClawSpawn(tmp, ["status"])]);
 
       await expect(
         fs.readFile(path.join(tmp, "dist", "plugin-sdk", "root-alias.cjs"), "utf-8"),
@@ -210,7 +214,7 @@ describe("run-node script", () => {
       });
       expect(spawnCalls[1]).toMatchObject({
         cmd: process.execPath,
-        args: [path.join(tmp, "openclaw.mjs"), "gateway"],
+        args: [...process.execArgv, path.join(tmp, "openclaw.mjs"), "gateway"],
         cwd: "/tmp/openclaw-runtime",
       });
       expect(spawnCalls[1]?.env?.OPENCLAW_RUNNER_RUNTIME_CWD).toBeUndefined();
@@ -261,9 +265,41 @@ describe("run-node script", () => {
         },
         {
           cmd: process.execPath,
-          args: [path.join(tmp, "openclaw.mjs"), "gateway"],
+          args: [...process.execArgv, path.join(tmp, "openclaw.mjs"), "gateway"],
           cwd: runtimeCwd,
         },
+      ]);
+    });
+  });
+
+  it("forwards execArgv to the final openclaw process", async () => {
+    await withTempDir(async (tmp) => {
+      await writeRuntimePostBuildScaffold(tmp);
+
+      const spawnCalls: string[][] = [];
+      const spawn = (cmd: string, args: string[]) => {
+        spawnCalls.push([cmd, ...args]);
+        return createExitedProcess(0);
+      };
+
+      const exitCode = await runNodeMain({
+        cwd: tmp,
+        execArgv: ["--max-old-space-size=4096", "--trace-warnings"],
+        args: ["gateway"],
+        env: {
+          ...process.env,
+          OPENCLAW_FORCE_BUILD: "1",
+          OPENCLAW_RUNNER_LOG: "0",
+        },
+        spawn,
+        execPath: process.execPath,
+        platform: process.platform,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(spawnCalls).toEqual([
+        expectedBuildSpawn(),
+        expectedOpenClawSpawn(tmp, ["gateway"], ["--max-old-space-size=4096", "--trace-warnings"]),
       ]);
     });
   });
@@ -321,7 +357,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, ["status"])]);
     });
   });
 
@@ -396,7 +432,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedBuildSpawn(), expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedBuildSpawn(), expectedOpenClawSpawn(tmp, ["status"])]);
     });
   });
 
@@ -464,7 +500,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, ["status"])]);
       await expect(fs.readFile(distPackagePath, "utf-8")).resolves.toContain('"./index.js"');
     });
   });
@@ -528,7 +564,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, ["status"])]);
     });
   });
 
@@ -598,7 +634,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, ["status"])]);
       await expect(
         fs.readFile(distManifestPath, "utf-8").then((raw) => JSON.parse(raw)),
       ).resolves.toMatchObject({
@@ -667,7 +703,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, ["status"])]);
       await expect(
         fs.readFile(distManifestPath, "utf-8").then((raw) => JSON.parse(raw)),
       ).resolves.toMatchObject({
@@ -742,7 +778,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, ["status"])]);
       await expect(fs.access(distManifestPath)).rejects.toThrow();
       await expect(fs.access(distPackagePath)).rejects.toThrow();
     });
@@ -801,7 +837,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedOpenClawSpawn(tmp, ["status"])]);
     });
   });
 
@@ -862,7 +898,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([expectedBuildSpawn(), expectedOpenClawSpawn(tmp, "status")]);
+      expect(spawnCalls).toEqual([expectedBuildSpawn(), expectedOpenClawSpawn(tmp, ["status"])]);
     });
   });
 });

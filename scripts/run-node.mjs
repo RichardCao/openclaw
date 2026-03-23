@@ -262,7 +262,7 @@ const runOpenClaw = async (deps) => {
   delete childEnv.OPENCLAW_RUNNER_RUNTIME_CWD;
   const nodeProcess = deps.spawn(
     deps.execPath,
-    [path.join(deps.packageRoot, "openclaw.mjs"), ...deps.args],
+    [...deps.execArgv, path.join(deps.packageRoot, "openclaw.mjs"), ...deps.args],
     {
       cwd: resolveRuntimeCwd(deps),
       env: childEnv,
@@ -313,6 +313,7 @@ const writeBuildStamp = (deps) => {
  *   fs?: typeof fs,
  *   stderr?: NodeJS.WriteStream,
  *   execPath?: string,
+ *   execArgv?: string[],
  *   cwd?: string,
  *   scriptPath?: string | null,
  *   args?: string[],
@@ -326,6 +327,7 @@ export async function runNodeMain(params = {}) {
     fs: params.fs ?? fs,
     stderr: params.stderr ?? process.stderr,
     execPath: params.execPath ?? process.execPath,
+    execArgv: params.execArgv ?? process.execArgv,
     cwd: params.cwd ?? process.cwd(),
     scriptPath: params.scriptPath ?? (params.cwd ? null : process.argv[1]),
     args: params.args ?? process.argv.slice(2),

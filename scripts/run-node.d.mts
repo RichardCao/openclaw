@@ -17,6 +17,7 @@ export function runNodeMain(params?: {
   fs?: unknown;
   stderr?: { write: (value: string) => void };
   execPath?: string;
+  execArgv?: string[];
   cwd?: string;
   scriptPath?: string | null;
   args?: string[];
