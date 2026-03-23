@@ -4,11 +4,17 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+const OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT = "OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT";
 const logLevel = process.env.OPENCLAW_BUILD_VERBOSE ? "info" : "warn";
 const extraArgs = process.argv.slice(2);
 const INEFFECTIVE_DYNAMIC_IMPORT_RE = /\[INEFFECTIVE_DYNAMIC_IMPORT\]/;
 const UNRESOLVED_IMPORT_RE = /\[UNRESOLVED_IMPORT\]/;
 const ANSI_ESCAPE_RE = new RegExp(String.raw`\u001B\[[0-9;]*m`, "g");
+const packageRoot =
+  typeof process.env[OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT] === "string" &&
+  process.env[OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT].trim().length > 0
+    ? path.resolve(process.env[OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT])
+    : process.cwd();
 
 function removeDistPluginNodeModulesSymlinks(rootDir) {
   const extensionsDir = path.join(rootDir, "extensions");
@@ -32,12 +38,11 @@ function removeDistPluginNodeModulesSymlinks(rootDir) {
 }
 
 function pruneStaleRuntimeSymlinks() {
-  const cwd = process.cwd();
   // runtime-postbuild stages plugin-owned node_modules into dist/ and links the
   // dist-runtime overlay back to that tree. Remove only those symlinks up front
   // so tsdown's clean step cannot traverse stale runtime overlays on rebuilds.
-  removeDistPluginNodeModulesSymlinks(path.join(cwd, "dist"));
-  removeDistPluginNodeModulesSymlinks(path.join(cwd, "dist-runtime"));
+  removeDistPluginNodeModulesSymlinks(path.join(packageRoot, "dist"));
+  removeDistPluginNodeModulesSymlinks(path.join(packageRoot, "dist-runtime"));
 }
 
 pruneStaleRuntimeSymlinks();
@@ -61,6 +66,7 @@ const result = spawnSync(
   "pnpm",
   ["exec", "tsdown", "--config-loader", "unrun", "--logLevel", logLevel, ...extraArgs],
   {
+    cwd: packageRoot,
     encoding: "utf8",
     stdio: "pipe",
     shell: process.platform === "win32",

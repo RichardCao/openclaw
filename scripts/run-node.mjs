@@ -11,6 +11,7 @@ const buildScript = "scripts/tsdown-build.mjs";
 const compilerArgs = [buildScript, "--no-clean"];
 const OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV = "OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV";
 const OPENCLAW_RUNNER_FORWARDED_NODE_OPTIONS = "OPENCLAW_RUNNER_FORWARDED_NODE_OPTIONS";
+const OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT = "OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT";
 
 const runNodeSourceRoots = ["src", "extensions"];
 const runNodeConfigFiles = ["tsconfig.json", "package.json", "tsdown.config.ts"];
@@ -335,6 +336,7 @@ const stripBuildNodeOptions = (value) => {
 
 const resolveBuildEnv = (deps, options = {}) => {
   const childEnv = { ...deps.env };
+  delete childEnv[OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT];
   delete childEnv.OPENCLAW_RUNNER_RUNTIME_CWD;
   delete childEnv.OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV;
   const forwardedNodeOptions = resolveForwardedNodeOptions(childEnv);
@@ -346,6 +348,8 @@ const resolveBuildEnv = (deps, options = {}) => {
   }
   return childEnv;
 };
+
+const resolveBuildScriptPath = (deps) => path.join(deps.packageRoot, buildScript);
 
 const runOpenClaw = async (deps) => {
   const childEnv = resolveBuildEnv(deps);
@@ -443,10 +447,16 @@ export async function runNodeMain(params = {}) {
 
   logRunner("Building TypeScript (dist is stale).", deps);
   const buildCmd = deps.execPath;
-  const buildArgs = [...stripBuildExecArgv(deps.execArgv), ...compilerArgs];
+  const buildArgs = [
+    ...stripBuildExecArgv(deps.execArgv),
+    resolveBuildScriptPath(deps),
+    ...compilerArgs.slice(1),
+  ];
+  const buildEnv = resolveBuildEnv(deps, { stripWatchFlags: true });
+  buildEnv[OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT] = deps.packageRoot;
   const build = deps.spawn(buildCmd, buildArgs, {
-    cwd: deps.packageRoot,
-    env: resolveBuildEnv(deps, { stripWatchFlags: true }),
+    cwd: resolveRuntimeCwd(deps),
+    env: buildEnv,
     stdio: "inherit",
   });
 
