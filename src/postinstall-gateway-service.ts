@@ -171,7 +171,6 @@ export async function runPostinstallGatewayServiceRepair(params?: {
   const nextProgram = await resolveGatewayProgramArguments({
     port,
     runtime: runtimeChoice,
-    nodePath: currentExecPath && isNodeRuntime(currentExecPath) ? currentExecPath : undefined,
     bunPath: currentExecPath && isBunRuntime(currentExecPath) ? currentExecPath : undefined,
   });
   const nextEnvironment = mergeServiceEnv({

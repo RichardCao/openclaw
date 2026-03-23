@@ -107,6 +107,14 @@ describe("postinstall gateway service repair", () => {
     expect(readCommandMock).toHaveBeenCalledWith({
       HOME: "/Users/test",
     });
+    expect(resolveGatewayProgramArgumentsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bunPath: undefined,
+        runtime: "node",
+        port: 18789,
+      }),
+    );
+    expect(resolveGatewayProgramArgumentsMock.mock.calls[0]?.[0]).not.toHaveProperty("nodePath");
     expect(installMock).toHaveBeenCalledWith(
       expect.objectContaining({
         env: expect.objectContaining({
@@ -308,9 +316,10 @@ describe("postinstall gateway service repair", () => {
     expect(resolveGatewayProgramArgumentsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         runtime: "bun",
+        port: 18789,
         bunPath: "/Users/test/.bun/bin/bun",
-        nodePath: undefined,
       }),
     );
+    expect(resolveGatewayProgramArgumentsMock.mock.calls[0]?.[0]).not.toHaveProperty("nodePath");
   });
 });
