@@ -1,10 +1,19 @@
 import type { Command } from "commander";
-import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
+import { loadConfig } from "../config/config.js";
+import {
+  buildGatewayConnectionDetails,
+  callGateway,
+  resolveGatewayCredentialsWithSecretInputs,
+} from "../gateway/call.js";
+import { authorizeOperatorScopesForMethod } from "../gateway/method-scopes.js";
 import { isLoopbackHost } from "../gateway/net.js";
+import { loadCurrentDeviceAuthStore } from "../infra/device-auth-store.js";
+import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
 import {
   approveDevicePairing,
   listDevicePairing,
   summarizeDeviceTokens,
+  verifyDeviceToken,
   type PairedDevice as InfraPairedDevice,
 } from "../infra/device-pairing.js";
 import { formatTimeAgo } from "../infra/format-time/format-relative.ts";
@@ -64,6 +73,13 @@ type DevicePairingList = {
 
 const FALLBACK_NOTICE = "Direct scope access failed; using local fallback.";
 
+type LocalPairingFallbackMode = "read" | "mutate";
+
+type MutatingPairingFallbackAuth = {
+  suppressNormalClosureFallback: boolean;
+  callerScopes?: readonly string[];
+};
+
 const devicesCallOpts = (cmd: Command, defaults?: { timeoutMs?: number }) =>
   cmd
     .option("--url <url>", "Gateway WebSocket URL (defaults to gateway.remote.url when configured)")
@@ -99,10 +115,91 @@ function normalizeErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function shouldUseLocalPairingFallback(opts: DevicesRpcOpts, error: unknown): boolean {
+function isExplicitPairingFallbackError(message: string): boolean {
+  return message.includes("pairing required") || message.includes("not-paired");
+}
+
+function isNormalClosurePairingFallbackError(message: string): boolean {
+  return (
+    message.includes("gateway closed") &&
+    message.includes("normal closure") &&
+    message.includes("no close reason")
+  );
+}
+
+async function resolveMutatingPairingFallbackAuth(
+  opts: DevicesRpcOpts,
+): Promise<MutatingPairingFallbackAuth> {
+  const explicitToken = typeof opts.token === "string" ? opts.token.trim() : "";
+  const explicitPassword = typeof opts.password === "string" ? opts.password.trim() : "";
+  if (explicitToken || explicitPassword) {
+    return { suppressNormalClosureFallback: true };
+  }
+
+  try {
+    const sharedAuth = await resolveGatewayCredentialsWithSecretInputs({
+      config: loadConfig(),
+      explicitAuth: {
+        token: opts.token,
+        password: opts.password,
+      },
+    });
+    if (sharedAuth.token || sharedAuth.password) {
+      return { suppressNormalClosureFallback: true };
+    }
+  } catch {
+    return { suppressNormalClosureFallback: true };
+  }
+
+  const store = loadCurrentDeviceAuthStore();
+  const currentDeviceId = loadOrCreateDeviceIdentity().deviceId;
+  const operatorToken = store?.deviceId === currentDeviceId ? store.tokens?.operator : undefined;
+  if (typeof operatorToken?.token !== "string") {
+    return { suppressNormalClosureFallback: true };
+  }
+
+  const callerScopes = Array.isArray(operatorToken.scopes) ? operatorToken.scopes : [];
+  const scopeAuth = authorizeOperatorScopesForMethod("device.pair.approve", callerScopes);
+  if (!scopeAuth.allowed) {
+    return { suppressNormalClosureFallback: true };
+  }
+
+  const verified = await verifyDeviceToken({
+    deviceId: currentDeviceId,
+    token: operatorToken.token,
+    role: "operator",
+    scopes: callerScopes,
+  });
+  if (!verified.ok) {
+    return { suppressNormalClosureFallback: true };
+  }
+
+  return {
+    suppressNormalClosureFallback: false,
+    callerScopes,
+  };
+}
+
+async function shouldUseLocalPairingFallback(
+  opts: DevicesRpcOpts,
+  error: unknown,
+  mode: LocalPairingFallbackMode,
+  fallbackAuth?: MutatingPairingFallbackAuth,
+): Promise<boolean> {
   const message = normalizeErrorMessage(error).toLowerCase();
-  if (!message.includes("pairing required")) {
+  const isExplicitPairingError = isExplicitPairingFallbackError(message);
+  const isNormalClosureError = isNormalClosurePairingFallbackError(message);
+  if (!isExplicitPairingError && !isNormalClosureError) {
     return false;
+  }
+  if (mode === "read" && isNormalClosureError && !isExplicitPairingError) {
+    return false;
+  }
+  if (mode === "mutate" && isNormalClosureError && !isExplicitPairingError) {
+    const resolvedFallbackAuth = fallbackAuth ?? (await resolveMutatingPairingFallbackAuth(opts));
+    if (resolvedFallbackAuth.suppressNormalClosureFallback) {
+      return false;
+    }
   }
   if (typeof opts.url === "string" && opts.url.trim().length > 0) {
     // Explicit --url might point at a remote/tunneled gateway; never silently
@@ -129,10 +226,20 @@ function redactLocalPairedDevice(device: InfraPairedDevice): PairedDevice {
 }
 
 async function listPairingWithFallback(opts: DevicesRpcOpts): Promise<DevicePairingList> {
+  return (await loadPairingWithFallback(opts, "read")).list;
+}
+
+async function loadPairingWithFallback(
+  opts: DevicesRpcOpts,
+  mode: LocalPairingFallbackMode,
+): Promise<{ list: DevicePairingList; isLocal: boolean }> {
   try {
-    return parseDevicePairingList(await callGatewayCli("device.pair.list", opts, {}));
+    return {
+      list: parseDevicePairingList(await callGatewayCli("device.pair.list", opts, {})),
+      isLocal: false,
+    };
   } catch (error) {
-    if (!shouldUseLocalPairingFallback(opts, error)) {
+    if (!(await shouldUseLocalPairingFallback(opts, error, mode))) {
       throw error;
     }
     if (opts.json !== true) {
@@ -140,8 +247,11 @@ async function listPairingWithFallback(opts: DevicesRpcOpts): Promise<DevicePair
     }
     const local = await listDevicePairing();
     return {
-      pending: local.pending as PendingDevice[],
-      paired: local.paired.map((device) => redactLocalPairedDevice(device)),
+      list: {
+        pending: local.pending as PendingDevice[],
+        paired: local.paired.map((device) => redactLocalPairedDevice(device)),
+      },
+      isLocal: true,
     };
   }
 }
@@ -153,15 +263,28 @@ async function approvePairingWithFallback(
   try {
     return await callGatewayCli("device.pair.approve", opts, { requestId });
   } catch (error) {
-    if (!shouldUseLocalPairingFallback(opts, error)) {
+    const message = normalizeErrorMessage(error).toLowerCase();
+    const fallbackAuth =
+      isNormalClosurePairingFallbackError(message) && !isExplicitPairingFallbackError(message)
+        ? await resolveMutatingPairingFallbackAuth(opts)
+        : undefined;
+    if (!(await shouldUseLocalPairingFallback(opts, error, "mutate", fallbackAuth))) {
       throw error;
     }
     if (opts.json !== true) {
       defaultRuntime.log(theme.warn(FALLBACK_NOTICE));
     }
-    const approved = await approveDevicePairing(requestId);
+    const approved = fallbackAuth?.callerScopes
+      ? await approveDevicePairing(requestId, { callerScopes: fallbackAuth.callerScopes })
+      : await approveDevicePairing(requestId);
     if (!approved) {
+      if (fallbackAuth) {
+        throw error;
+      }
       return null;
+    }
+    if (approved.status === "forbidden") {
+      throw new Error(`missing scope: ${approved.missingScope}`, { cause: error });
     }
     return {
       requestId,
@@ -351,8 +474,10 @@ export function registerDevicesCli(program: Command) {
           if (!deviceId) {
             continue;
           }
-          await callGatewayCli("device.pair.remove", opts, { deviceId });
-          removedDeviceIds.push(deviceId);
+          const removed = await callGatewayCli("device.pair.remove", opts, { deviceId });
+          if (removed) {
+            removedDeviceIds.push(deviceId);
+          }
         }
         if (opts.pending) {
           const pending = Array.isArray(list.pending) ? list.pending : [];
@@ -361,8 +486,10 @@ export function registerDevicesCli(program: Command) {
             if (!requestId) {
               continue;
             }
-            await callGatewayCli("device.pair.reject", opts, { requestId });
-            rejectedRequestIds.push(requestId);
+            const rejected = await callGatewayCli("device.pair.reject", opts, { requestId });
+            if (rejected) {
+              rejectedRequestIds.push(requestId);
+            }
           }
         }
         if (opts.json) {
@@ -392,7 +519,9 @@ export function registerDevicesCli(program: Command) {
       .action(async (requestId: string | undefined, opts: DevicesRpcOpts) => {
         let resolvedRequestId = requestId?.trim();
         if (!resolvedRequestId || opts.latest) {
-          const latest = selectLatestPendingRequest((await listPairingWithFallback(opts)).pending);
+          const latest = selectLatestPendingRequest(
+            (await loadPairingWithFallback(opts, "mutate")).list.pending,
+          );
           resolvedRequestId = latest?.requestId?.trim();
         }
         if (!resolvedRequestId) {
