@@ -377,6 +377,62 @@ describe("restartGatewayProcessWithFreshPid", () => {
     expect(resolveOpenClawPackageRootSyncMock).not.toHaveBeenCalled();
   });
 
+  it("routes pnpm-linked source trees through the wrapper respawn plan", () => {
+    delete process.env.OPENCLAW_NO_RESPAWN;
+    clearSupervisorHints();
+    setPlatform("linux");
+    const srvRoot = path.join(path.parse(process.cwd()).root, "srv");
+    const stableRoot = path.join(srvRoot, "node_modules", "openclaw");
+    const runNodePath = path.join(stableRoot, "scripts", "run-node.mjs");
+    const sourceEntryPath = path.join(stableRoot, "src", "entry.ts");
+    const tsconfigPath = path.join(stableRoot, "tsconfig.json");
+    process.execArgv = ["--inspect=9229", "--trace-warnings", "--import", "./loader.mjs"];
+    process.argv = [
+      "/usr/local/bin/node",
+      path.join(
+        srvRoot,
+        "node_modules",
+        ".pnpm",
+        "openclaw@2026.3.14",
+        "node_modules",
+        "openclaw",
+        "dist",
+        "entry.js",
+      ),
+      "gateway",
+    ];
+    existsSyncMock.mockImplementation(
+      (value: unknown) =>
+        value === runNodePath || value === sourceEntryPath || value === tsconfigPath,
+    );
+    spawnMock.mockReturnValue({ pid: 7171, unref: vi.fn() });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/tmp/openclaw-runtime");
+
+    const result = restartGatewayProcessWithFreshPid();
+    cwdSpy.mockRestore();
+
+    expect(result).toEqual({ mode: "spawned", pid: 7171 });
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      ["--trace-warnings", runNodePath, "gateway"],
+      expect.objectContaining({
+        cwd: "/tmp/openclaw-runtime",
+        detached: true,
+        env: expect.objectContaining({
+          OPENCLAW_RUNNER_RUNTIME_CWD: "/tmp/openclaw-runtime",
+          OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV: JSON.stringify([
+            "--inspect=9229",
+            "--trace-warnings",
+            "--import",
+            "./loader.mjs",
+          ]),
+        }),
+        stdio: "inherit",
+      }),
+    );
+    expect(resolveOpenClawPackageRootSyncMock).not.toHaveBeenCalled();
+  });
+
   it("keeps dev TypeScript entrypoints unchanged", () => {
     delete process.env.OPENCLAW_NO_RESPAWN;
     clearSupervisorHints();

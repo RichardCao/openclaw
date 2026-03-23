@@ -85,7 +85,10 @@ function resolveStablePackageEntrypoint(packageRoot: string, argv1: string): str
   return resolveStableDistEntrypoint(packageRoot, argv1);
 }
 
-function resolvePnpmStableEntrypointFromArgv1(argv1: string): string | null {
+function resolvePnpmStableEntrypointFromArgv1(argv1: string): {
+  packageRoot: string;
+  entrypoint: string;
+} | null {
   const normalized = path.resolve(argv1);
   const marker = `${path.sep}node_modules${path.sep}.pnpm${path.sep}`;
   const markerIndex = normalized.lastIndexOf(marker);
@@ -103,7 +106,14 @@ function resolvePnpmStableEntrypointFromArgv1(argv1: string): string | null {
   }
 
   const stableRoot = path.join(normalized.slice(0, markerIndex), "node_modules", "openclaw");
-  return resolveStablePackageEntrypoint(stableRoot, argv1);
+  const entrypoint = resolveStablePackageEntrypoint(stableRoot, argv1);
+  if (!entrypoint) {
+    return null;
+  }
+  return {
+    packageRoot: stableRoot,
+    entrypoint,
+  };
 }
 
 function isInspectorExecArgv(value: string): boolean {
@@ -181,9 +191,13 @@ function resolveStableRespawnPlan(): {
     return { args: currentArgs };
   }
 
-  const pnpmEntrypoint = resolvePnpmStableEntrypointFromArgv1(argv1);
-  if (pnpmEntrypoint) {
-    return { args: [...process.execArgv, pnpmEntrypoint, ...process.argv.slice(2)] };
+  const pnpmRespawnTarget = resolvePnpmStableEntrypointFromArgv1(argv1);
+  if (pnpmRespawnTarget) {
+    const sourceTreeEntrypoint = resolveStableSourceTreeEntrypoint(pnpmRespawnTarget.packageRoot);
+    if (sourceTreeEntrypoint && pnpmRespawnTarget.entrypoint === sourceTreeEntrypoint) {
+      return buildSourceTreeRespawnPlan(pnpmRespawnTarget.packageRoot);
+    }
+    return { args: [...process.execArgv, pnpmRespawnTarget.entrypoint, ...process.argv.slice(2)] };
   }
 
   const packageRoot = resolveOpenClawPackageRootSync({
