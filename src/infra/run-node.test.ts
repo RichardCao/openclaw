@@ -317,7 +317,7 @@ describe("run-node script", () => {
     });
   });
 
-  it("prefers forwarded execArgv from env over the intermediate wrapper process flags", async () => {
+  it("prefers forwarded execArgv from env while stripping inspector flags from the rebuild child", async () => {
     await withTempDir(async (tmp) => {
       await writeRuntimePostBuildScaffold(tmp);
 
@@ -355,7 +355,7 @@ describe("run-node script", () => {
       expect(spawnCalls).toEqual([
         {
           cmd: process.execPath,
-          args: [...forwardedExecArgv, expectedBuildScriptPath(tmp), "--no-clean"],
+          args: ["--trace-warnings", expectedBuildScriptPath(tmp), "--no-clean"],
           env: expect.not.objectContaining({
             OPENCLAW_RUNNER_FORWARDED_EXEC_ARGV: expect.any(String),
           }),
@@ -393,6 +393,57 @@ describe("run-node script", () => {
         "src",
         "--watch-preserve-output",
         "--trace-warnings",
+      ];
+      const exitCode = await runNodeMain({
+        cwd: tmp,
+        args: ["gateway"],
+        execArgv,
+        env: {
+          ...process.env,
+          OPENCLAW_FORCE_BUILD: "1",
+          OPENCLAW_RUNNER_LOG: "0",
+        },
+        spawn,
+        execPath: process.execPath,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(spawnCalls).toEqual([
+        {
+          cmd: process.execPath,
+          args: ["--trace-warnings", expectedBuildScriptPath(tmp), "--no-clean"],
+        },
+        {
+          cmd: process.execPath,
+          args: [...execArgv, path.join(tmp, "openclaw.mjs"), "gateway"],
+        },
+      ]);
+    });
+  });
+
+  it("strips inspector flags from the rebuild child while preserving them for the final openclaw process", async () => {
+    await withTempDir(async (tmp) => {
+      await writeRuntimePostBuildScaffold(tmp);
+
+      const spawnCalls: Array<{
+        cmd: string;
+        args: string[];
+      }> = [];
+      const spawn = (cmd: string, args: string[]) => {
+        spawnCalls.push({
+          cmd,
+          args,
+        });
+        return createExitedProcess(0);
+      };
+
+      const execArgv = [
+        "--inspect=9229",
+        "--inspect-port",
+        "9230",
+        "--trace-warnings",
+        "--inspect-wait",
+        "--inspect-brk",
       ];
       const exitCode = await runNodeMain({
         cwd: tmp,
@@ -482,7 +533,7 @@ describe("run-node script", () => {
     });
   });
 
-  it("restores forwarded NODE_OPTIONS for rebuild and final openclaw processes", async () => {
+  it("restores forwarded NODE_OPTIONS while stripping inspector flags from the rebuild child", async () => {
     await withTempDir(async (tmp) => {
       await writeRuntimePostBuildScaffold(tmp);
 
@@ -525,7 +576,7 @@ describe("run-node script", () => {
           cmd: process.execPath,
           args: [expectedBuildScriptPath(tmp), "--no-clean"],
           env: expect.objectContaining({
-            NODE_OPTIONS: forwardedNodeOptions,
+            NODE_OPTIONS: '--require "./loader.js" --max-old-space-size=4096',
             OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT: tmp,
           }),
         },
@@ -571,6 +622,62 @@ describe("run-node script", () => {
 
       const forwardedNodeOptions =
         "--watch --watch-path=src --watch-preserve-output --max-old-space-size=4096";
+      const exitCode = await runNodeMain({
+        cwd: tmp,
+        args: ["gateway"],
+        execArgv: [],
+        env: {
+          ...process.env,
+          OPENCLAW_FORCE_BUILD: "1",
+          OPENCLAW_RUNNER_LOG: "0",
+          OPENCLAW_RUNNER_FORWARDED_NODE_OPTIONS: forwardedNodeOptions,
+        },
+        spawn,
+        execPath: process.execPath,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(spawnCalls).toEqual([
+        {
+          cmd: process.execPath,
+          args: [expectedBuildScriptPath(tmp), "--no-clean"],
+          env: expect.objectContaining({
+            NODE_OPTIONS: "--max-old-space-size=4096",
+            OPENCLAW_RUNNER_BUILD_PACKAGE_ROOT: tmp,
+          }),
+        },
+        {
+          cmd: process.execPath,
+          args: [path.join(tmp, "openclaw.mjs"), "gateway"],
+          env: expect.objectContaining({
+            NODE_OPTIONS: forwardedNodeOptions,
+          }),
+        },
+      ]);
+    });
+  });
+
+  it("strips inspector NODE_OPTIONS from the rebuild child while preserving them for the final openclaw process", async () => {
+    await withTempDir(async (tmp) => {
+      await writeRuntimePostBuildScaffold(tmp);
+
+      const spawnCalls: Array<{
+        cmd: string;
+        args: string[];
+        env: NodeJS.ProcessEnv | undefined;
+      }> = [];
+      const spawn = (cmd: string, args: string[], options: unknown) => {
+        const spawnOptions = options as { env?: NodeJS.ProcessEnv } | undefined;
+        spawnCalls.push({
+          cmd,
+          args,
+          env: spawnOptions?.env,
+        });
+        return createExitedProcess(0);
+      };
+
+      const forwardedNodeOptions =
+        "--inspect=9229 --inspect-port 9230 --inspect-wait --inspect-brk --max-old-space-size=4096";
       const exitCode = await runNodeMain({
         cwd: tmp,
         args: ["gateway"],

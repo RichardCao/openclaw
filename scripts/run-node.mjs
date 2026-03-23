@@ -287,6 +287,16 @@ const resolveForwardedNodeOptions = (env) => {
   return rawValue;
 };
 
+const isInspectorExecArgv = (value) =>
+  value === "--inspect" ||
+  value.startsWith("--inspect=") ||
+  value.startsWith("--inspect-") ||
+  value === "--debug-port" ||
+  value.startsWith("--debug-port=");
+
+const inspectorExecArgvConsumesNextValue = (value) =>
+  value === "--inspect-port" || value === "--debug-port";
+
 const isWatchExecArgv = (value) =>
   value === "--watch" ||
   value.startsWith("--watch=") ||
@@ -299,13 +309,18 @@ const isWatchExecArgv = (value) =>
 const watchExecArgvConsumesNextValue = (value) =>
   value === "--watch-path" || value === "--watch-kill-signal";
 
-// Watch mode belongs on the real gateway process, not on the one-shot rebuild step.
+const shouldStripBuildExecArgv = (value) => isInspectorExecArgv(value) || isWatchExecArgv(value);
+
+const buildExecArgvConsumesNextValue = (value) =>
+  inspectorExecArgvConsumesNextValue(value) || watchExecArgvConsumesNextValue(value);
+
+// Watch and inspector modes belong on the real gateway process, not on the one-shot rebuild step.
 const stripBuildExecArgv = (execArgv) => {
   const stripped = [];
   for (let index = 0; index < execArgv.length; index += 1) {
     const value = execArgv[index];
-    if (isWatchExecArgv(value)) {
-      if (watchExecArgvConsumesNextValue(value)) {
+    if (shouldStripBuildExecArgv(value)) {
+      if (buildExecArgvConsumesNextValue(value)) {
         index += 1;
       }
       continue;
@@ -323,8 +338,8 @@ const stripBuildNodeOptions = (value) => {
   const stripped = [];
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
-    if (isWatchExecArgv(token)) {
-      if (watchExecArgvConsumesNextValue(token)) {
+    if (shouldStripBuildExecArgv(token)) {
+      if (buildExecArgvConsumesNextValue(token)) {
         index += 1;
       }
       continue;
