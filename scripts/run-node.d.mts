@@ -18,6 +18,7 @@ export function runNodeMain(params?: {
   stderr?: { write: (value: string) => void };
   execPath?: string;
   cwd?: string;
+  scriptPath?: string | null;
   args?: string[];
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;

@@ -128,7 +128,7 @@ const readGitStatus = (deps) => {
       "git",
       ["status", "--porcelain", "--untracked-files=normal", "--", ...runNodeWatchedPaths],
       {
-        cwd: deps.cwd,
+        cwd: deps.packageRoot,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       },
@@ -247,14 +247,28 @@ const resolveRuntimeCwd = (deps) => {
   return deps.cwd;
 };
 
+const resolvePackageRoot = (deps) => {
+  const scriptPath = deps.scriptPath;
+  if (typeof scriptPath === "string" && scriptPath.trim()) {
+    // The wrapper may be invoked from outside the repo root during restart, so
+    // derive the package root from the wrapper path instead of the process cwd.
+    return path.resolve(path.dirname(scriptPath), "..");
+  }
+  return deps.cwd;
+};
+
 const runOpenClaw = async (deps) => {
   const childEnv = { ...deps.env };
   delete childEnv.OPENCLAW_RUNNER_RUNTIME_CWD;
-  const nodeProcess = deps.spawn(deps.execPath, ["openclaw.mjs", ...deps.args], {
-    cwd: resolveRuntimeCwd(deps),
-    env: childEnv,
-    stdio: "inherit",
-  });
+  const nodeProcess = deps.spawn(
+    deps.execPath,
+    [path.join(deps.packageRoot, "openclaw.mjs"), ...deps.args],
+    {
+      cwd: resolveRuntimeCwd(deps),
+      env: childEnv,
+      stdio: "inherit",
+    },
+  );
   const res = await new Promise((resolve) => {
     nodeProcess.on("exit", (exitCode, exitSignal) => {
       resolve({ exitCode, exitSignal });
@@ -268,7 +282,7 @@ const runOpenClaw = async (deps) => {
 
 const syncRuntimeArtifacts = (deps) => {
   try {
-    runRuntimePostBuild({ cwd: deps.cwd });
+    runRuntimePostBuild({ cwd: deps.packageRoot });
   } catch (error) {
     logRunner(
       `Failed to write runtime build artifacts: ${error?.message ?? "unknown error"}`,
@@ -292,6 +306,19 @@ const writeBuildStamp = (deps) => {
   }
 };
 
+/**
+ * @param {{
+ *   spawn?: typeof spawn,
+ *   spawnSync?: typeof spawnSync,
+ *   fs?: typeof fs,
+ *   stderr?: NodeJS.WriteStream,
+ *   execPath?: string,
+ *   cwd?: string,
+ *   scriptPath?: string | null,
+ *   args?: string[],
+ *   env?: NodeJS.ProcessEnv,
+ * }} [params={}]
+ */
 export async function runNodeMain(params = {}) {
   const deps = {
     spawn: params.spawn ?? spawn,
@@ -300,18 +327,20 @@ export async function runNodeMain(params = {}) {
     stderr: params.stderr ?? process.stderr,
     execPath: params.execPath ?? process.execPath,
     cwd: params.cwd ?? process.cwd(),
+    scriptPath: params.scriptPath ?? (params.cwd ? null : process.argv[1]),
     args: params.args ?? process.argv.slice(2),
     env: params.env ? { ...params.env } : { ...process.env },
   };
 
-  deps.distRoot = path.join(deps.cwd, "dist");
+  deps.packageRoot = resolvePackageRoot(deps);
+  deps.distRoot = path.join(deps.packageRoot, "dist");
   deps.distEntry = path.join(deps.distRoot, "/entry.js");
   deps.buildStampPath = path.join(deps.distRoot, ".buildstamp");
   deps.sourceRoots = runNodeSourceRoots.map((sourceRoot) => ({
     name: sourceRoot,
-    path: path.join(deps.cwd, sourceRoot),
+    path: path.join(deps.packageRoot, sourceRoot),
   }));
-  deps.configFiles = runNodeConfigFiles.map((filePath) => path.join(deps.cwd, filePath));
+  deps.configFiles = runNodeConfigFiles.map((filePath) => path.join(deps.packageRoot, filePath));
 
   if (!shouldBuild(deps)) {
     if (!syncRuntimeArtifacts(deps)) {
@@ -324,7 +353,7 @@ export async function runNodeMain(params = {}) {
   const buildCmd = deps.execPath;
   const buildArgs = compilerArgs;
   const build = deps.spawn(buildCmd, buildArgs, {
-    cwd: deps.cwd,
+    cwd: deps.packageRoot,
     env: deps.env,
     stdio: "inherit",
   });

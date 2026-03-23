@@ -110,13 +110,15 @@ function buildSourceTreeRespawnPlan(packageRoot: string): {
   cwd: string;
   env: NodeJS.ProcessEnv;
 } {
+  // Keep the original runtime cwd so relative preload/import flags in execArgv
+  // keep resolving exactly as they did for the current process.
   return {
     args: [
       ...process.execArgv,
       path.join(packageRoot, "scripts", "run-node.mjs"),
       ...process.argv.slice(2),
     ],
-    cwd: packageRoot,
+    cwd: process.cwd(),
     env: {
       ...process.env,
       [OPENCLAW_RUNNER_RUNTIME_CWD]: process.cwd(),
