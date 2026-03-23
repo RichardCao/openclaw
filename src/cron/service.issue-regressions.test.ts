@@ -903,6 +903,102 @@ describe("Cron issue regressions", () => {
     expect(runIsolatedAgentJob).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves successful external schedule repairs across timer-run completion", async () => {
+    const store = makeStorePath();
+    const scheduledAt = Date.parse("2026-02-06T10:00:00.000Z");
+    const jobId = "recurring-external-valid-repair";
+
+    const cronJob = createIsolatedRegressionJob({
+      id: jobId,
+      name: "poll",
+      scheduledAt,
+      schedule: { kind: "every", everyMs: 10_000, anchorMs: scheduledAt },
+      payload: { kind: "agentTurn", message: "poll" },
+      state: { nextRunAtMs: scheduledAt },
+    });
+    await writeCronJobs(store.storePath, [cronJob]);
+
+    let now = scheduledAt;
+    const runIsolatedAgentJob = vi.fn(async () => {
+      await writeCronJobs(store.storePath, [
+        {
+          ...cronJob,
+          updatedAtMs: scheduledAt + 1,
+          schedule: { kind: "every", everyMs: 60_000, anchorMs: scheduledAt },
+          state: { ...cronJob.state, nextRunAtMs: scheduledAt },
+        },
+      ]);
+      now = scheduledAt + 10 * 60_000;
+      return { status: "ok" as const, summary: "ok" };
+    });
+    const state = createCronServiceState({
+      cronEnabled: true,
+      storePath: store.storePath,
+      log: noopLogger,
+      nowMs: () => now,
+      enqueueSystemEvent: vi.fn(),
+      requestHeartbeatNow: vi.fn(),
+      runIsolatedAgentJob,
+    });
+
+    await onTimer(state);
+
+    const job = state.store?.jobs.find((entry) => entry.id === jobId);
+    expect(job).toBeDefined();
+    expect(job!.state.lastStatus).toBe("ok");
+    expect(job!.state.nextRunAtMs).toBe(scheduledAt + 60_000);
+    expect(job!.state.nextRunAtMs).toBeLessThan(now);
+  });
+
+  it("preserves force-run retry backoff when external schedule edits make the job earlier", async () => {
+    const store = makeStorePath();
+    const scheduledAt = Date.parse("2026-02-06T10:00:00.000Z");
+    const jobId = "force-run-external-edit-backoff";
+
+    const cronJob = createIsolatedRegressionJob({
+      id: jobId,
+      name: "poll",
+      scheduledAt,
+      schedule: { kind: "every", everyMs: 10_000, anchorMs: scheduledAt },
+      payload: { kind: "agentTurn", message: "poll" },
+      state: { nextRunAtMs: scheduledAt },
+    });
+    await writeCronJobs(store.storePath, [cronJob]);
+
+    let now = scheduledAt;
+    const state = createCronServiceState({
+      cronEnabled: true,
+      storePath: store.storePath,
+      log: noopLogger,
+      nowMs: () => now,
+      enqueueSystemEvent: vi.fn(),
+      requestHeartbeatNow: vi.fn(),
+      runIsolatedAgentJob: vi.fn(async () => {
+        await writeCronJobs(store.storePath, [
+          {
+            ...cronJob,
+            updatedAtMs: scheduledAt + 1,
+            schedule: { kind: "every", everyMs: 60_000, anchorMs: scheduledAt },
+            state: { ...cronJob.state, nextRunAtMs: scheduledAt },
+          },
+        ]);
+        now = scheduledAt + 10 * 60_000;
+        return {
+          status: "error" as const,
+          error: "synthetic failure",
+        };
+      }),
+    });
+
+    await run(state, jobId, "force");
+
+    const job = state.store?.jobs.find((entry) => entry.id === jobId);
+    expect(job).toBeDefined();
+    expect(job!.state.lastStatus).toBe("error");
+    expect(job!.state.nextRunAtMs).toBe(now + 30_000);
+    expect(job!.state.nextRunAtMs).toBeGreaterThan(now);
+  });
+
   it("#38822: one-shot job retries Bedrock too-many-tokens-per-day errors", async () => {
     const store = makeStorePath();
     const scheduledAt = Date.parse("2026-03-08T10:00:00.000Z");

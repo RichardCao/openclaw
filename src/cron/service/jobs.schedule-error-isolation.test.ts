@@ -342,6 +342,23 @@ describe("cron schedule error isolation", () => {
     expect(nextWakeAtMs(state)).toBe(Date.now() + 60_000);
   });
 
+  it("fast-wakes malformed fixed schedules that still need one reload-repair follow-up", () => {
+    const badJob = createJob({
+      id: "bad-at-reload-follow-up",
+      name: "Bad At Reload Follow-up",
+      schedule: { kind: "at", at: "not-a-timestamp" },
+      state: {
+        nextRunAtMs: undefined,
+        scheduleErrorCount: 1,
+        lastError: "schedule error: previous",
+      },
+    });
+    const state = createMockState([badJob]);
+    state.skipNextReloadRepairRecomputeJobIds.add(badJob.id);
+
+    expect(nextWakeAtMs(state)).toBe(Date.now() + 2_000);
+  });
+
   it("still fast-wakes malformed cron schedules that have schedule errors", () => {
     const badJob = createJob({
       id: "bad-cron-wake",

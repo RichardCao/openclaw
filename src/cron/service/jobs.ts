@@ -637,10 +637,11 @@ export function nextWakeAtMs(state: CronServiceState) {
     // eventually observed, but avoid re-arming malformed every/at schedules on
     // the same 2s fast-wake loop used for repairable cron recomputes.
     if ((job.state.scheduleErrorCount ?? 0) > 0) {
-      recordMissingWake(
-        nowMs +
-          (job.schedule.kind === "cron" ? MISSING_NEXT_RUN_WAKE_MS : SCHEDULE_ERROR_RELOAD_POLL_MS),
-      );
+      const wakeDelayMs =
+        job.schedule.kind === "cron" || hasSkipNextReloadRepairRecompute(state, job.id)
+          ? MISSING_NEXT_RUN_WAKE_MS
+          : SCHEDULE_ERROR_RELOAD_POLL_MS;
+      recordMissingWake(nowMs + wakeDelayMs);
       continue;
     }
     try {

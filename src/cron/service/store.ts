@@ -87,6 +87,7 @@ function repairNextRunsAfterExternalReload(params: {
     if (!previous) {
       continue;
     }
+    const wasRunningDuringReload = typeof previous.state.runningAtMs === "number";
     if (
       typeof previous.state.runningAtMs === "number" &&
       (typeof job.state.runningAtMs !== "number" ||
@@ -139,6 +140,9 @@ function repairNextRunsAfterExternalReload(params: {
     if (job.state.nextRunAtMs !== nextRunAtMs) {
       job.state.nextRunAtMs = nextRunAtMs;
       changed = true;
+    }
+    if (wasRunningDuringReload && job.enabled) {
+      skipRecomputeJobIds.add(job.id);
     }
     state.deps.log.debug(
       {

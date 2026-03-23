@@ -64,6 +64,8 @@ function mergeManualRunSnapshotAfterReload(params: {
   } | null;
   removed: boolean;
 }) {
+  const isFiniteTimestamp = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
   if (!params.state.store) {
     return;
   }
@@ -103,7 +105,12 @@ function mergeManualRunSnapshotAfterReload(params: {
   // Otherwise, keep the manual-run terminal state (e.g. one-shot disable on success).
   if (externalScheduleOrEnabledChanged) {
     reloaded.enabled = preservedEnabled;
-    reloaded.state.nextRunAtMs = preservedNextRunAtMs;
+    reloaded.state.nextRunAtMs =
+      params.snapshot.state.lastStatus === "error" &&
+      isFiniteTimestamp(params.snapshot.state.nextRunAtMs) &&
+      isFiniteTimestamp(preservedNextRunAtMs)
+        ? Math.max(preservedNextRunAtMs, params.snapshot.state.nextRunAtMs)
+        : preservedNextRunAtMs;
     reloaded.state.scheduleErrorCount = preservedScheduleErrorCount;
     reloaded.state.lastError = preservedScheduleErrorText?.startsWith("schedule error:")
       ? preservedScheduleErrorText
