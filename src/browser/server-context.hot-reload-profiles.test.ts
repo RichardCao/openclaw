@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserServerState } from "./server-context.types.js";
 
 let cfgProfiles: Record<string, { cdpPort?: number; cdpUrl?: string; color?: string }> = {};
+let cfgExecutablePath: string | undefined;
+let cfgHeadless = true;
+let cfgNoSandbox = false;
+let cfgDefaultProfile = "openclaw";
+let runtimeConfigSnapshot: ReturnType<typeof buildConfig> | null = null;
 
 // Simulate module-level cache behavior
 let cachedConfig: ReturnType<typeof buildConfig> | null = null;
@@ -11,8 +16,10 @@ function buildConfig() {
     browser: {
       enabled: true,
       color: "#FF4500",
-      headless: true,
-      defaultProfile: "openclaw",
+      headless: cfgHeadless,
+      noSandbox: cfgNoSandbox,
+      executablePath: cfgExecutablePath,
+      defaultProfile: cfgDefaultProfile,
       profiles: { ...cfgProfiles },
     },
   };
@@ -25,7 +32,7 @@ vi.mock("../config/config.js", () => ({
       return buildConfig();
     },
   }),
-  getRuntimeConfigSnapshot: () => null,
+  getRuntimeConfigSnapshot: () => runtimeConfigSnapshot,
   loadConfig: () => {
     // simulate stale loadConfig that doesn't see updates unless cache cleared
     if (!cachedConfig) {
@@ -53,6 +60,11 @@ describe("server-context hot-reload profiles", () => {
     cfgProfiles = {
       openclaw: { cdpPort: 18800, color: "#FF4500" },
     };
+    cfgExecutablePath = undefined;
+    cfgHeadless = true;
+    cfgNoSandbox = false;
+    cfgDefaultProfile = "openclaw";
+    runtimeConfigSnapshot = null;
     cachedConfig = null; // Clear simulated cache
   });
 
@@ -205,5 +217,36 @@ describe("server-context hot-reload profiles", () => {
     expect(runtime?.profile.cdpPort).toBe(19999);
     expect(runtime?.lastTargetId).toBeNull();
     expect(runtime?.reconcile?.reason).toContain("cdpPort");
+  });
+
+  it("bypasses stale runtime snapshots so browser route state picks up fresh disk config", async () => {
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    runtimeConfigSnapshot = buildConfig();
+    cfgProfiles.openclaw = { cdpPort: 19999, color: "#FF4500" };
+    cfgExecutablePath = "/opt/google/chrome/google-chrome";
+    cfgHeadless = false;
+    cfgNoSandbox = true;
+    cfgDefaultProfile = "desktop";
+    cfgProfiles.desktop = { cdpPort: 19998, color: "#0066CC" };
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(state.resolved.profiles.openclaw?.cdpPort).toBe(19999);
+    expect(state.resolved.executablePath).toBe("/opt/google/chrome/google-chrome");
+    expect(state.resolved.headless).toBe(false);
+    expect(state.resolved.noSandbox).toBe(true);
+    expect(state.resolved.defaultProfile).toBe("desktop");
   });
 });
