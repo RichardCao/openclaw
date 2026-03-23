@@ -190,6 +190,29 @@ describe("buildStatusMessage", () => {
     expect(normalizeTestText(text)).toContain("Context: 200k/1.0m");
   });
 
+  it("renders unknown context usage when cached totalTokens are stale", () => {
+    const text = buildStatusMessage({
+      agent: {
+        model: "anthropic/claude-opus-4-6",
+        contextTokens: 200_000,
+      },
+      sessionEntry: {
+        sessionId: "stale-zero",
+        updatedAt: 0,
+        totalTokens: 0,
+        totalTokensFresh: false,
+        contextTokens: 200_000,
+      },
+      sessionKey: "agent:main:main",
+      sessionScope: "per-sender",
+      queue: { mode: "collect", depth: 0 },
+    });
+
+    const normalized = normalizeTestText(text);
+    expect(normalized).toContain("Context: ?/200k");
+    expect(normalized).not.toContain("Context: 0/200k");
+  });
+
   it("recomputes context window from the active model after switching away from a smaller session override", () => {
     const sessionEntry = {
       sessionId: "switch-back",
