@@ -131,6 +131,22 @@ function inspectorExecArgvConsumesNextValue(value: string): boolean {
   return value === "--inspect-port" || value === "--debug-port";
 }
 
+function isWatchExecArgv(value: string): boolean {
+  return (
+    value === "--watch" ||
+    value.startsWith("--watch=") ||
+    value === "--watch-path" ||
+    value.startsWith("--watch-path=") ||
+    value === "--watch-kill-signal" ||
+    value.startsWith("--watch-kill-signal=") ||
+    value === "--watch-preserve-output"
+  );
+}
+
+function watchExecArgvConsumesNextValue(value: string): boolean {
+  return value === "--watch-path" || value === "--watch-kill-signal";
+}
+
 function isPreloadExecArgv(value: string): boolean {
   return (
     value === "--import" ||
@@ -149,8 +165,8 @@ function stripIntermediateExecArgv(execArgv: string[]): string[] {
   const stripped: string[] = [];
   for (let index = 0; index < execArgv.length; index += 1) {
     const value = execArgv[index];
-    if (isInspectorExecArgv(value)) {
-      if (inspectorExecArgvConsumesNextValue(value)) {
+    if (isInspectorExecArgv(value) || isWatchExecArgv(value)) {
+      if (inspectorExecArgvConsumesNextValue(value) || watchExecArgvConsumesNextValue(value)) {
         index += 1;
       }
       continue;

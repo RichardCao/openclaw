@@ -7,6 +7,7 @@ export function runTsdownBuildMain(params?: {
   spawnSync?: unknown;
   cwd?: string;
   args?: string[];
+  execArgv?: string[];
   env?: NodeJS.ProcessEnv;
   stdout?: { write: (value: string) => void };
   stderr?: { write: (value: string) => void };

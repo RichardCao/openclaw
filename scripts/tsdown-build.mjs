@@ -38,14 +38,11 @@ const unquoteNodeOptionToken = (token) => {
 
 const quoteNodeOptionToken = (value, originalToken) => {
   const originalQuote = unquoteNodeOptionToken(originalToken).quote;
-  if (originalQuote) {
+  if (originalQuote && !/\s/.test(value)) {
     return `${originalQuote}${value}${originalQuote}`;
   }
   if (!/\s/.test(value)) {
     return value;
-  }
-  if (!value.includes("'")) {
-    return `'${value}'`;
   }
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 };
@@ -95,6 +92,56 @@ export const absolutizeRelativePreloadNodeOptions = (nodeOptions, runtimeCwd) =>
   }
 
   return rewritten.join(" ");
+};
+
+const absolutizeRelativePreloadExecArgv = (execArgv, runtimeCwd) => {
+  const rewritten = [];
+  for (let index = 0; index < execArgv.length; index += 1) {
+    const token = String(execArgv[index]);
+    if (PRELOAD_NODE_OPTION_FLAGS.has(token)) {
+      rewritten.push(token);
+      const nextToken = execArgv[index + 1];
+      if (nextToken !== undefined) {
+        const nextValue = String(nextToken);
+        rewritten.push(
+          unquoteNodeOptionToken(absolutizeRelativeModuleSpecifier(nextValue, runtimeCwd)).value,
+        );
+        index += 1;
+      }
+      continue;
+    }
+
+    const equalsIndex = token.indexOf("=");
+    if (equalsIndex > 0) {
+      const flag = token.slice(0, equalsIndex);
+      if (PRELOAD_NODE_OPTION_FLAGS.has(flag)) {
+        const operand = token.slice(equalsIndex + 1);
+        rewritten.push(
+          `${flag}=${unquoteNodeOptionToken(absolutizeRelativeModuleSpecifier(operand, runtimeCwd)).value}`,
+        );
+        continue;
+      }
+    }
+
+    rewritten.push(token);
+  }
+  return rewritten;
+};
+
+const appendExecArgvToNodeOptions = (nodeOptions, execArgv, runtimeCwd) => {
+  if (!Array.isArray(execArgv) || execArgv.length === 0) {
+    return nodeOptions;
+  }
+  const forwardedExecArgv = absolutizeRelativePreloadExecArgv(execArgv, runtimeCwd)
+    .map((token) => quoteNodeOptionToken(token, ""))
+    .join(" ");
+  if (!forwardedExecArgv) {
+    return nodeOptions;
+  }
+  if (typeof nodeOptions !== "string" || nodeOptions.trim().length === 0) {
+    return forwardedExecArgv;
+  }
+  return `${nodeOptions} ${forwardedExecArgv}`;
 };
 
 const resolvePackageRoot = (env, runtimeCwd) =>
@@ -147,9 +194,13 @@ function findFatalUnresolvedImport(lines) {
   return null;
 }
 
-const resolveTsdownEnv = (env, runtimeCwd) => {
+const resolveTsdownEnv = (env, runtimeCwd, execArgv = process.execArgv) => {
   const childEnv = { ...env };
-  const nodeOptions = absolutizeRelativePreloadNodeOptions(childEnv.NODE_OPTIONS, runtimeCwd);
+  const nodeOptions = appendExecArgvToNodeOptions(
+    absolutizeRelativePreloadNodeOptions(childEnv.NODE_OPTIONS, runtimeCwd),
+    execArgv,
+    runtimeCwd,
+  );
   if (typeof nodeOptions === "string" && nodeOptions.trim().length > 0) {
     childEnv.NODE_OPTIONS = nodeOptions;
   }
@@ -174,7 +225,7 @@ export function runTsdownBuildMain(params = {}) {
     {
       cwd: packageRoot,
       encoding: "utf8",
-      env: resolveTsdownEnv(env, runtimeCwd),
+      env: resolveTsdownEnv(env, runtimeCwd, params.execArgv),
       stdio: "pipe",
       shell: (params.platform ?? process.platform) === "win32",
     },
