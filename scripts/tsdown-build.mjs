@@ -38,7 +38,7 @@ const unquoteNodeOptionToken = (token) => {
 
 const quoteNodeOptionToken = (value, originalToken) => {
   const originalQuote = unquoteNodeOptionToken(originalToken).quote;
-  if (originalQuote && !/\s/.test(value)) {
+  if (originalQuote === '"' && !/\s/.test(value)) {
     return `${originalQuote}${value}${originalQuote}`;
   }
   if (!/\s/.test(value)) {

@@ -221,8 +221,8 @@ function stripIntermediateNodeOptions(value: string | undefined): string | undef
   const stripped: string[] = [];
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
-    if (isInspectorExecArgv(token)) {
-      if (inspectorExecArgvConsumesNextValue(token)) {
+    if (isInspectorExecArgv(token) || isWatchExecArgv(token)) {
+      if (inspectorExecArgvConsumesNextValue(token) || watchExecArgvConsumesNextValue(token)) {
         index += 1;
       }
       continue;

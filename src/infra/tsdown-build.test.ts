@@ -131,4 +131,10 @@ describe("tsdown-build script", () => {
       `--require tsx --loader ${path.resolve("/tmp/runtime", "loader.mjs")} --import=${path.resolve("/tmp/runtime", "../importer.mjs")}`,
     );
   });
+
+  it("does not preserve single quotes when rewriting preload paths", () => {
+    expect(absolutizeRelativePreloadNodeOptions("--require './loader.cjs'", "/tmp/runtime")).toBe(
+      `--require ${path.resolve("/tmp/runtime", "loader.cjs")}`,
+    );
+  });
 });
