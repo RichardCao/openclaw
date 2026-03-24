@@ -8,6 +8,12 @@ import type { OpenClawConfig } from "../config/config.js";
 import { resolveBrowserConfig, resolveProfile, type ResolvedBrowserProfile } from "./config.js";
 import type { BrowserServerState } from "./server-context.types.js";
 
+function loadDiskConfigForBrowserRouteHotReload(): OpenClawConfig {
+  // Browser-route hot reload should not let read-time config.env application mutate the
+  // live process environment before a runtime snapshot refresh has successfully activated.
+  return createConfigIO({ env: { ...process.env } }).loadConfig();
+}
+
 function changedProfileInvariants(
   current: ResolvedBrowserProfile,
   next: ResolvedBrowserProfile,
@@ -108,7 +114,7 @@ export function refreshResolvedBrowserConfigFromDisk(params: {
   const refreshState = getRuntimeConfigSnapshotRefreshState();
   let diskCfg: OpenClawConfig;
   try {
-    diskCfg = createConfigIO().loadConfig();
+    diskCfg = loadDiskConfigForBrowserRouteHotReload();
   } catch (error) {
     if (!runtimeCfg) {
       throw error;

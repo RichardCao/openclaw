@@ -12,6 +12,10 @@ let runtimeConfigSnapshot: ReturnType<typeof buildConfig> | null = null;
 let runtimeRefreshState: "idle" | "pending" | "failed" = "idle";
 let runtimeFailedBrowserConfigJson: string | null = null;
 let diskConfigError: Error | null = null;
+let diskConfigEnvMutation: {
+  key: string;
+  value: string;
+} | null = null;
 
 // Simulate module-level cache behavior
 let cachedConfig: ReturnType<typeof buildConfig> | null = null;
@@ -33,10 +37,14 @@ function buildConfig() {
 }
 
 vi.mock("../config/config.js", () => ({
-  createConfigIO: () => ({
+  createConfigIO: (overrides?: { env?: NodeJS.ProcessEnv }) => ({
     loadConfig: () => {
       if (diskConfigError) {
         throw diskConfigError;
+      }
+      if (diskConfigEnvMutation) {
+        const targetEnv = overrides?.env ?? process.env;
+        targetEnv[diskConfigEnvMutation.key] = diskConfigEnvMutation.value;
       }
       // Always return fresh config for createConfigIO to simulate fresh disk read
       return buildConfig();
@@ -84,6 +92,7 @@ describe("server-context hot-reload profiles", () => {
     runtimeRefreshState = "idle";
     runtimeFailedBrowserConfigJson = null;
     diskConfigError = null;
+    diskConfigEnvMutation = null;
     cachedConfig = null; // Clear simulated cache
   });
 
@@ -510,6 +519,32 @@ describe("server-context hot-reload profiles", () => {
     expect(state.resolved.noSandbox).toBe(true);
     expect(state.resolved.defaultProfile).toBe("desktop");
     expect(state.resolved.profiles.desktop?.cdpUrl).toBe("http://127.0.0.1:9222");
+  });
+
+  it("does not mutate process.env from browser-route disk config reads", async () => {
+    const envKey = "OPENCLAW_BROWSER_ROUTE_ENV_TEST";
+    delete process.env[envKey];
+    diskConfigEnvMutation = { key: envKey, value: "from-disk-config" };
+
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    runtimeConfigSnapshot = buildConfig();
+    runtimeRefreshState = "pending";
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(process.env[envKey]).toBeUndefined();
   });
 
   it("still throws disk config errors when no runtime snapshot is active", async () => {
