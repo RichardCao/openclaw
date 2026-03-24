@@ -118,8 +118,14 @@ export function refreshResolvedBrowserConfigFromDisk(params: {
   const cfg = shouldMergeDiskBrowserConfig({ runtimeCfg, refreshState, diskCfg })
     ? { ...runtimeCfg!, browser: diskCfg.browser }
     : (runtimeCfg ?? diskCfg);
-  const freshResolved = resolveBrowserConfig(cfg.browser, cfg);
-  applyResolvedConfig(params.current, freshResolved);
+  try {
+    const freshResolved = resolveBrowserConfig(cfg.browser, cfg);
+    applyResolvedConfig(params.current, freshResolved);
+  } catch (error) {
+    if (!runtimeCfg) {
+      throw error;
+    }
+  }
 }
 
 export function resolveBrowserProfileWithHotReload(params: {

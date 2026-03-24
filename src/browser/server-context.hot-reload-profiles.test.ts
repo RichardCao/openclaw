@@ -5,6 +5,7 @@ let cfgProfiles: Record<string, { cdpPort?: number; cdpUrl?: string; color?: str
 let cfgExecutablePath: string | undefined;
 let cfgHeadless = true;
 let cfgNoSandbox = false;
+let cfgCdpUrl: string | undefined;
 let cfgDefaultProfile = "openclaw";
 let cfgGatewayPort: number | undefined;
 let runtimeConfigSnapshot: ReturnType<typeof buildConfig> | null = null;
@@ -23,6 +24,7 @@ function buildConfig() {
       color: "#FF4500",
       headless: cfgHeadless,
       noSandbox: cfgNoSandbox,
+      cdpUrl: cfgCdpUrl,
       executablePath: cfgExecutablePath,
       defaultProfile: cfgDefaultProfile,
       profiles: { ...cfgProfiles },
@@ -75,6 +77,7 @@ describe("server-context hot-reload profiles", () => {
     cfgExecutablePath = undefined;
     cfgHeadless = true;
     cfgNoSandbox = false;
+    cfgCdpUrl = undefined;
     cfgDefaultProfile = "openclaw";
     cfgGatewayPort = undefined;
     runtimeConfigSnapshot = null;
@@ -462,6 +465,51 @@ describe("server-context hot-reload profiles", () => {
     expect(state.resolved.headless).toBe(false);
     expect(state.resolved.noSandbox).toBe(true);
     expect(state.resolved.defaultProfile).toBe("desktop");
+  });
+
+  it("preserves the last hot-reloaded browser state when browser config resolution throws", async () => {
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    runtimeConfigSnapshot = buildConfig();
+
+    cfgExecutablePath = "/opt/google/chrome/google-chrome";
+    cfgHeadless = false;
+    cfgNoSandbox = true;
+    cfgDefaultProfile = "desktop";
+    cfgProfiles.desktop = { cdpUrl: "http://127.0.0.1:9222", color: "#0066CC" };
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(state.resolved.executablePath).toBe("/opt/google/chrome/google-chrome");
+    expect(state.resolved.headless).toBe(false);
+    expect(state.resolved.noSandbox).toBe(true);
+    expect(state.resolved.defaultProfile).toBe("desktop");
+    expect(state.resolved.profiles.desktop?.cdpUrl).toBe("http://127.0.0.1:9222");
+
+    cfgCdpUrl = "ftp://bad";
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(state.resolved.executablePath).toBe("/opt/google/chrome/google-chrome");
+    expect(state.resolved.headless).toBe(false);
+    expect(state.resolved.noSandbox).toBe(true);
+    expect(state.resolved.defaultProfile).toBe("desktop");
+    expect(state.resolved.profiles.desktop?.cdpUrl).toBe("http://127.0.0.1:9222");
   });
 
   it("still throws disk config errors when no runtime snapshot is active", async () => {
