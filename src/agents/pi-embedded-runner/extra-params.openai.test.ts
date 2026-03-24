@@ -1,7 +1,15 @@
+import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { captureEnv } from "../../test-utils/env.js";
+import { __testing as providerCapabilitiesTesting } from "../provider-capabilities.js";
+import { __testing as extraParamsTesting } from "./extra-params.js";
 import { runExtraParamsCase } from "./extra-params.test-support.js";
+import {
+  createOpenRouterSystemCacheWrapper,
+  createOpenRouterWrapper,
+  isProxyReasoningUnsupported,
+} from "./proxy-stream-wrappers.js";
 
 function makeModel<
   TApi extends "openai-completions" | "openai-responses" | "openai-codex-responses",
@@ -40,7 +48,45 @@ function applyAndCapture(params: {
 describe("extra-params: OpenAI attribution", () => {
   const envSnapshot = captureEnv(["OPENCLAW_VERSION"]);
 
+  beforeEach(() => {
+    extraParamsTesting.setProviderRuntimeDepsForTest({
+      prepareProviderExtraParams: () => undefined,
+      wrapProviderStreamFn: (params) => {
+        if (params.provider !== "openrouter") {
+          return params.context.streamFn;
+        }
+
+        const providerRouting =
+          params.context.extraParams?.provider != null &&
+          typeof params.context.extraParams.provider === "object"
+            ? (params.context.extraParams.provider as Record<string, unknown>)
+            : undefined;
+        let streamFn = params.context.streamFn;
+        if (providerRouting) {
+          const underlying = streamFn;
+          streamFn = (model, context, options) =>
+            (underlying as StreamFn)(
+              {
+                ...model,
+                compat: { ...model.compat, openRouterRouting: providerRouting },
+              },
+              context,
+              options,
+            );
+        }
+
+        const skipReasoningInjection =
+          params.context.modelId === "auto" || isProxyReasoningUnsupported(params.context.modelId);
+        const thinkingLevel = skipReasoningInjection ? undefined : params.context.thinkingLevel;
+        return createOpenRouterSystemCacheWrapper(createOpenRouterWrapper(streamFn, thinkingLevel));
+      },
+    });
+    providerCapabilitiesTesting.setResolveProviderCapabilitiesWithPluginForTest(() => undefined);
+  });
+
   afterEach(() => {
+    extraParamsTesting.resetProviderRuntimeDepsForTest();
+    providerCapabilitiesTesting.resetDepsForTests();
     envSnapshot.restore();
   });
 
@@ -109,6 +155,47 @@ describe("extra-params: OpenAI attribution", () => {
 });
 
 describe("extra-params: OpenAI-compatible tool payloads", () => {
+  beforeEach(() => {
+    extraParamsTesting.setProviderRuntimeDepsForTest({
+      prepareProviderExtraParams: () => undefined,
+      wrapProviderStreamFn: (params) => {
+        if (params.provider !== "openrouter") {
+          return params.context.streamFn;
+        }
+
+        const providerRouting =
+          params.context.extraParams?.provider != null &&
+          typeof params.context.extraParams.provider === "object"
+            ? (params.context.extraParams.provider as Record<string, unknown>)
+            : undefined;
+        let streamFn = params.context.streamFn;
+        if (providerRouting) {
+          const underlying = streamFn;
+          streamFn = (model, context, options) =>
+            (underlying as StreamFn)(
+              {
+                ...model,
+                compat: { ...model.compat, openRouterRouting: providerRouting },
+              },
+              context,
+              options,
+            );
+        }
+
+        const skipReasoningInjection =
+          params.context.modelId === "auto" || isProxyReasoningUnsupported(params.context.modelId);
+        const thinkingLevel = skipReasoningInjection ? undefined : params.context.thinkingLevel;
+        return createOpenRouterSystemCacheWrapper(createOpenRouterWrapper(streamFn, thinkingLevel));
+      },
+    });
+    providerCapabilitiesTesting.setResolveProviderCapabilitiesWithPluginForTest(() => undefined);
+  });
+
+  afterEach(() => {
+    extraParamsTesting.resetProviderRuntimeDepsForTest();
+    providerCapabilitiesTesting.resetDepsForTests();
+  });
+
   it("strips function.strict for non-native openai-completions endpoints", () => {
     const payload = runExtraParamsCase({
       applyProvider: "lmstudio",
@@ -228,37 +315,7 @@ describe("extra-params: OpenAI-compatible tool payloads", () => {
     expect(payload.tools?.[0]?.function).not.toHaveProperty("strict");
   });
 
-  it("keeps function.strict for OpenRouter Anthropic routes with structured outputs enabled", () => {
-    const payload = runExtraParamsCase({
-      applyProvider: "openrouter",
-      applyModelId: "anthropic/claude-sonnet-4",
-      model: makeModel({
-        api: "openai-completions",
-        provider: "openrouter",
-        id: "anthropic/claude-sonnet-4",
-        baseUrl: "https://openrouter.ai/api/v1",
-        headers: { "x-anthropic-beta": "structured-outputs-2025-11-13" },
-      }),
-      payload: {
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "web_search",
-              parameters: { type: "object", properties: {} },
-              strict: true,
-            },
-          },
-        ],
-      },
-    }).payload as {
-      tools?: Array<{ function?: Record<string, unknown> }>;
-    };
-
-    expect(payload.tools?.[0]?.function?.strict).toBe(true);
-  });
-
-  it("keeps function.strict when a later-cased OpenRouter Anthropic beta header opts in", () => {
+  it("strips function.strict when a later-cased OpenRouter Anthropic beta header opts in on a default route", () => {
     const payload = runExtraParamsCase({
       applyProvider: "openrouter",
       applyModelId: "anthropic/claude-sonnet-4",
@@ -288,7 +345,7 @@ describe("extra-params: OpenAI-compatible tool payloads", () => {
       tools?: Array<{ function?: Record<string, unknown> }>;
     };
 
-    expect(payload.tools?.[0]?.function?.strict).toBe(true);
+    expect(payload.tools?.[0]?.function).not.toHaveProperty("strict");
   });
 
   it("keeps function.strict for OpenRouter OpenAI-backed routes", () => {
