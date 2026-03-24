@@ -1551,7 +1551,13 @@ export async function writeConfigFile(
       runtimeConfigSnapshotRefreshState = "idle";
     } catch (error) {
       runtimeConfigSnapshotRefreshState = "failed";
-      runtimeConfigSnapshotFailedBrowserConfigJson = JSON.stringify(nextCfg.browser ?? null);
+      try {
+        runtimeConfigSnapshotFailedBrowserConfigJson = JSON.stringify(
+          io.loadConfig().browser ?? null,
+        );
+      } catch {
+        runtimeConfigSnapshotFailedBrowserConfigJson = JSON.stringify(nextCfg.browser ?? null);
+      }
       try {
         refreshHandler.clearOnRefreshFailure?.();
       } catch {

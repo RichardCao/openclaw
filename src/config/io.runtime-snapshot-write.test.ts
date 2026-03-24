@@ -5,6 +5,8 @@ import { withTempHome } from "./home-env.test-harness.js";
 import {
   clearConfigCache,
   clearRuntimeConfigSnapshot,
+  createConfigIO,
+  getRuntimeConfigSnapshotFailedBrowserConfigJson,
   getRuntimeConfigSourceSnapshot,
   loadConfig,
   projectConfigOntoRuntimeSourceSnapshot,
@@ -12,6 +14,7 @@ import {
   setRuntimeConfigSnapshot,
   writeConfigFile,
 } from "./io.js";
+import { withEnvOverride } from "./test-helpers.js";
 import type { OpenClawConfig } from "./types.js";
 
 function createSourceConfig(): OpenClawConfig {
@@ -250,6 +253,70 @@ describe("runtime config snapshot writes", () => {
       } finally {
         resetRuntimeConfigState();
       }
+    });
+  });
+
+  it("stores failed browser config in the same resolved shape used by disk reads", async () => {
+    await withTempHome("openclaw-config-runtime-refresh-failed-browser-", async (home) => {
+      await withEnvOverride(
+        {
+          OPENCLAW_BROWSER_BIN: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        },
+        async () => {
+          const configPath = path.join(home, ".openclaw", "openclaw.json");
+          const sourceConfig: OpenClawConfig = {
+            env: {
+              vars: {
+                OPENCLAW_BROWSER_BIN:
+                  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+              },
+            },
+            browser: {
+              enabled: true,
+              executablePath: "${OPENCLAW_BROWSER_BIN}",
+              defaultProfile: "openclaw",
+              profiles: {
+                openclaw: { cdpPort: 18800, color: "#FF4500" },
+              },
+            },
+          };
+
+          await fs.mkdir(path.dirname(configPath), { recursive: true });
+          await fs.writeFile(configPath, `${JSON.stringify(sourceConfig, null, 2)}\n`, "utf8");
+
+          try {
+            const runtimeConfig = createConfigIO().loadConfig();
+            setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
+            setRuntimeConfigSnapshotRefreshHandler({
+              refresh: async () => {
+                throw new Error("refresh failed");
+              },
+            });
+
+            await expect(
+              writeConfigFile({
+                ...runtimeConfig,
+                browser: {
+                  ...runtimeConfig.browser,
+                  headless: true,
+                },
+              }),
+            ).rejects.toThrow("refresh failed");
+
+            expect(getRuntimeConfigSnapshotFailedBrowserConfigJson()).toBe(
+              JSON.stringify(createConfigIO().loadConfig().browser ?? null),
+            );
+            expect(getRuntimeConfigSnapshotFailedBrowserConfigJson()).toContain(
+              "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            );
+            expect(getRuntimeConfigSnapshotFailedBrowserConfigJson()).not.toContain(
+              "${OPENCLAW_BROWSER_BIN}",
+            );
+          } finally {
+            resetRuntimeConfigState();
+          }
+        },
+      );
     });
   });
 });

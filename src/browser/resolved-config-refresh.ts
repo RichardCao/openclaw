@@ -113,8 +113,6 @@ export function refreshResolvedBrowserConfigFromDisk(params: {
     if (!runtimeCfg) {
       throw error;
     }
-    const freshResolved = resolveBrowserConfig(runtimeCfg.browser, runtimeCfg);
-    applyResolvedConfig(params.current, freshResolved);
     return;
   }
   const cfg = shouldMergeDiskBrowserConfig({ runtimeCfg, refreshState, diskCfg })

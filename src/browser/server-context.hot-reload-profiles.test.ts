@@ -421,6 +421,49 @@ describe("server-context hot-reload profiles", () => {
     expect(state.resolved.defaultProfile).toBe("openclaw");
   });
 
+  it("preserves the last hot-reloaded browser state when disk config later becomes invalid", async () => {
+    const cfg = loadConfig();
+    const resolved = resolveBrowserConfig(cfg.browser, cfg);
+    const state = {
+      server: null,
+      port: 18791,
+      resolved,
+      profiles: new Map(),
+    };
+
+    runtimeConfigSnapshot = buildConfig();
+
+    cfgExecutablePath = "/opt/google/chrome/google-chrome";
+    cfgHeadless = false;
+    cfgNoSandbox = true;
+    cfgDefaultProfile = "desktop";
+    cfgProfiles.desktop = { cdpPort: 19999, color: "#0066CC" };
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(state.resolved.executablePath).toBe("/opt/google/chrome/google-chrome");
+    expect(state.resolved.headless).toBe(false);
+    expect(state.resolved.noSandbox).toBe(true);
+    expect(state.resolved.defaultProfile).toBe("desktop");
+
+    diskConfigError = new Error("invalid config");
+
+    refreshResolvedBrowserConfigFromDisk({
+      current: state,
+      refreshConfigFromDisk: true,
+      mode: "cached",
+    });
+
+    expect(state.resolved.executablePath).toBe("/opt/google/chrome/google-chrome");
+    expect(state.resolved.headless).toBe(false);
+    expect(state.resolved.noSandbox).toBe(true);
+    expect(state.resolved.defaultProfile).toBe("desktop");
+  });
+
   it("still throws disk config errors when no runtime snapshot is active", async () => {
     const cfg = loadConfig();
     const resolved = resolveBrowserConfig(cfg.browser, cfg);
