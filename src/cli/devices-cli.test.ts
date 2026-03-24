@@ -679,7 +679,7 @@ describe("devices cli local fallback", () => {
     expect(runtime.error).not.toHaveBeenCalledWith("unknown requestId");
   });
 
-  it("preserves unknown requestId for explicit approve retries after normal closure", async () => {
+  it("preserves the original normal-closure error for explicit approve retries when the local retry sees no pending request", async () => {
     callGateway
       .mockRejectedValueOnce(new Error("gateway closed (1000 normal closure): no close reason"))
       .mockRejectedValueOnce(new Error("gateway closed (1000 normal closure): no close reason"));
@@ -698,13 +698,12 @@ describe("devices cli local fallback", () => {
     verifyDeviceToken.mockResolvedValueOnce({ ok: true });
     approveDevicePairing.mockResolvedValueOnce(null);
 
-    await runDevicesApprove(["req-missing"]);
+    await expect(runDevicesApprove(["req-missing"])).rejects.toThrow("normal closure");
 
     expect(approveDevicePairing).toHaveBeenCalledWith("req-missing", {
       callerScopes: ["operator.pairing"],
     });
-    expect(runtime.error).toHaveBeenCalledWith("unknown requestId");
-    expect(runtime.exit).toHaveBeenCalledWith(1);
+    expect(runtime.error).not.toHaveBeenCalledWith("unknown requestId");
   });
 
   it("does not use local clear fallback when list returns pairing required", async () => {
