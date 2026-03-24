@@ -196,33 +196,18 @@ function stripOuterQuotes(value: string): string {
 }
 
 function tokenizeNodeOptions(value: string): string[] {
-  return (value.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) ?? []).map((token) =>
-    stripOuterQuotes(token),
-  );
-}
-
-function formatNodeOptions(tokens: string[]): string | undefined {
-  if (tokens.length === 0) {
-    return undefined;
-  }
-  return tokens
-    .map((token) => {
-      if (!/\s/.test(token) && !token.includes('"')) {
-        return token;
-      }
-      return `"${token.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-    })
-    .join(" ");
+  return value.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) ?? [];
 }
 
 function stripIntermediateNodeOptions(value: string | undefined): string | undefined {
   if (typeof value !== "string" || value.trim().length === 0) {
     return undefined;
   }
-  const tokens = tokenizeNodeOptions(value);
+  const rawTokens = tokenizeNodeOptions(value);
   const stripped: string[] = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
+  for (let index = 0; index < rawTokens.length; index += 1) {
+    const rawToken = rawTokens[index];
+    const token = stripOuterQuotes(rawToken);
     if (isInspectorExecArgv(token) || isWatchExecArgv(token)) {
       if (inspectorExecArgvConsumesNextValue(token) || watchExecArgvConsumesNextValue(token)) {
         index += 1;
@@ -235,9 +220,9 @@ function stripIntermediateNodeOptions(value: string | undefined): string | undef
       }
       continue;
     }
-    stripped.push(token);
+    stripped.push(rawToken);
   }
-  return formatNodeOptions(stripped);
+  return stripped.length > 0 ? stripped.join(" ") : undefined;
 }
 
 function buildSourceTreeRespawnPlan(packageRoot: string): {
