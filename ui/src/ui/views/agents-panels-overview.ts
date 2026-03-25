@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { ref } from "lit/directives/ref.js";
 import type {
   AgentIdentityResult,
   AgentsFilesListResult,
@@ -131,6 +132,16 @@ export function renderAgentOverview(params: {
           <label class="field">
             <span>Primary model${isDefault ? " (default)" : ""}</span>
             <select
+              ${ref((el) => {
+                if (!(el instanceof HTMLSelectElement)) {
+                  return;
+                }
+                queueMicrotask(() => {
+                  if (el.isConnected && el.value !== selectedPrimary) {
+                    el.value = selectedPrimary;
+                  }
+                });
+              })}
               ?disabled=${disabled}
               @change=${(e: Event) =>
                 onModelChange(agent.id, (e.target as HTMLSelectElement).value || null)}

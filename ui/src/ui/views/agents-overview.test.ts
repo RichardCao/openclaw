@@ -53,6 +53,7 @@ describe("renderAgentOverview", () => {
       },
     });
     await Promise.resolve();
+    await Promise.resolve();
 
     const modelSelect = container.querySelector<HTMLSelectElement>(".agent-model-fields select");
 
@@ -77,6 +78,7 @@ describe("renderAgentOverview", () => {
         },
       },
     });
+    await Promise.resolve();
     await Promise.resolve();
 
     const chips = Array.from(container.querySelectorAll(".chip")).map((node) =>
@@ -105,6 +107,91 @@ describe("renderAgentOverview", () => {
         },
       },
     });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const modelSelect = container.querySelector<HTMLSelectElement>(".agent-model-fields select");
+
+    expect(modelSelect?.value).toBe("");
+  });
+
+  it("re-syncs the live select value when switching from an explicit model to inherit-default", async () => {
+    const container = document.createElement("div");
+
+    render(
+      renderAgentOverview({
+        agent: { id: "main", name: "Main" } as never,
+        basePath: "",
+        defaultId: "main",
+        configForm: {
+          agents: {
+            defaults: {
+              model: {
+                primary: "openai-codex/gpt-5.4",
+              },
+              models: {
+                "google/gemini-2.5-pro": { alias: "gemini" },
+                "openai-codex/gpt-5.4": {},
+              },
+            },
+            list: [{ id: "main" }],
+          },
+        },
+        agentFilesList: null,
+        agentIdentity: null,
+        agentIdentityLoading: false,
+        agentIdentityError: null,
+        configLoading: false,
+        configSaving: false,
+        configDirty: false,
+        modelCatalog: [],
+        onConfigReload: () => undefined,
+        onConfigSave: () => undefined,
+        onModelChange: () => undefined,
+        onModelFallbacksChange: () => undefined,
+        onSelectPanel: () => undefined,
+      }),
+      container,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    render(
+      renderAgentOverview({
+        agent: { id: "other", name: "Other" } as never,
+        basePath: "",
+        defaultId: "main",
+        configForm: {
+          agents: {
+            defaults: {
+              model: {
+                primary: "openai-codex/gpt-5.4",
+              },
+              models: {
+                "google/gemini-2.5-pro": { alias: "gemini" },
+                "openai-codex/gpt-5.4": {},
+              },
+            },
+            list: [{ id: "other" }],
+          },
+        },
+        agentFilesList: null,
+        agentIdentity: null,
+        agentIdentityLoading: false,
+        agentIdentityError: null,
+        configLoading: false,
+        configSaving: false,
+        configDirty: false,
+        modelCatalog: [],
+        onConfigReload: () => undefined,
+        onConfigSave: () => undefined,
+        onModelChange: () => undefined,
+        onModelFallbacksChange: () => undefined,
+        onSelectPanel: () => undefined,
+      }),
+      container,
+    );
+    await Promise.resolve();
     await Promise.resolve();
 
     const modelSelect = container.querySelector<HTMLSelectElement>(".agent-model-fields select");
