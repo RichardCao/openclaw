@@ -10,7 +10,7 @@ import {
   normalizeModelValue,
   parseFallbackList,
   resolveAgentConfig,
-  resolveModelFallbacks,
+  resolveEffectiveModelFallbacks,
   resolveModelLabel,
   resolveModelPrimary,
 } from "./agents-utils.ts";
@@ -62,11 +62,15 @@ export function renderAgentOverview(params: {
     resolveModelPrimary(config.defaults?.model) ||
     (defaultModel !== "-" ? normalizeModelValue(defaultModel) : null);
   const effectivePrimary = entryPrimary ?? defaultPrimary ?? null;
-  const modelFallbacks = resolveModelFallbacks(config.entry?.model);
-  const fallbackChips = modelFallbacks ?? [];
   const skillFilter = Array.isArray(config.entry?.skills) ? config.entry?.skills : null;
   const skillCount = skillFilter?.length ?? null;
   const isDefault = Boolean(params.defaultId && agent.id === params.defaultId);
+  const selectedPrimary = isDefault ? (effectivePrimary ?? "") : (entryPrimary ?? "");
+  const modelFallbacks = resolveEffectiveModelFallbacks(
+    config.entry?.model,
+    config.defaults?.model,
+  );
+  const fallbackChips = modelFallbacks ?? [];
   const disabled = !configForm || configLoading || configSaving;
 
   const removeChip = (index: number) => {
@@ -127,7 +131,6 @@ export function renderAgentOverview(params: {
           <label class="field">
             <span>Primary model${isDefault ? " (default)" : ""}</span>
             <select
-              .value=${isDefault ? (effectivePrimary ?? "") : (entryPrimary ?? "")}
               ?disabled=${disabled}
               @change=${(e: Event) =>
                 onModelChange(agent.id, (e.target as HTMLSelectElement).value || null)}
@@ -135,15 +138,20 @@ export function renderAgentOverview(params: {
               ${
                 isDefault
                   ? html`
-                      <option value="">Not set</option>
+                      <option value="" ?selected=${selectedPrimary === ""}>Not set</option>
                     `
                   : html`
-                      <option value="">
+                      <option value="" ?selected=${selectedPrimary === ""}>
                         ${defaultPrimary ? `Inherit default (${defaultPrimary})` : "Inherit default"}
                       </option>
                     `
               }
-              ${buildModelOptions(configForm, effectivePrimary ?? undefined, params.modelCatalog)}
+              ${buildModelOptions(
+                configForm,
+                effectivePrimary ?? undefined,
+                params.modelCatalog,
+                selectedPrimary || null,
+              )}
             </select>
           </label>
           <div class="field">

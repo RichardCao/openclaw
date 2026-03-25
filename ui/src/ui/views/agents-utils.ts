@@ -576,6 +576,7 @@ export function buildModelOptions(
   configForm: Record<string, unknown> | null,
   current?: string | null,
   catalog?: ModelCatalogEntry[],
+  selected?: string | null,
 ) {
   const seen = new Set<string>();
   const options: ConfiguredModelOption[] = [];
@@ -608,7 +609,12 @@ export function buildModelOptions(
   if (options.length === 0) {
     return nothing;
   }
-  return options.map((option) => html`<option value=${option.value}>${option.label}</option>`);
+  const selectedValue = selected ?? current ?? null;
+  return options.map(
+    (option) => html`<option value=${option.value} ?selected=${option.value === selectedValue}>
+      ${option.label}
+    </option>`,
+  );
 }
 
 type CompiledPattern =
