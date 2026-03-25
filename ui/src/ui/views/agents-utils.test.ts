@@ -4,6 +4,7 @@ import {
   resolveConfiguredCronModelSuggestions,
   resolveAgentAvatarUrl,
   resolveEffectiveModelFallbacks,
+  resolveEffectiveModelLabel,
   resolveModelConfigForFallbackEdit,
   sortLocaleStrings,
 } from "./agents-utils.ts";
@@ -45,6 +46,30 @@ describe("resolveEffectiveModelFallbacks", () => {
     };
 
     expect(resolveEffectiveModelFallbacks(entryModel, defaultModel)).toEqual([]);
+  });
+});
+
+describe("resolveEffectiveModelLabel", () => {
+  it("shows the inherited primary when an entry only overrides fallbacks", () => {
+    expect(
+      resolveEffectiveModelLabel(
+        {
+          fallbacks: ["google/gemini-2.5-flash"],
+        },
+        {
+          primary: "openai/gpt-5.4",
+        },
+      ),
+    ).toBe("openai/gpt-5.4 (+1 fallback)");
+  });
+
+  it("shows inherited fallback counts on top of the effective primary", () => {
+    expect(
+      resolveEffectiveModelLabel(undefined, {
+        primary: "openai/gpt-5.4",
+        fallbacks: ["google/gemini-2.5-flash"],
+      }),
+    ).toBe("openai/gpt-5.4 (+1 fallback)");
   });
 });
 

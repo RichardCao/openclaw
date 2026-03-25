@@ -12,7 +12,7 @@ import {
   parseFallbackList,
   resolveAgentConfig,
   resolveEffectiveModelFallbacks,
-  resolveModelLabel,
+  resolveEffectiveModelLabel,
   resolveModelPrimary,
 } from "./agents-utils.ts";
 import type { AgentsPanel } from "./agents.ts";
@@ -54,10 +54,8 @@ export function renderAgentOverview(params: {
     agentFilesList && agentFilesList.agentId === agent.id ? agentFilesList.workspace : null;
   const workspace =
     workspaceFromFiles || config.entry?.workspace || config.defaults?.workspace || "default";
-  const model = config.entry?.model
-    ? resolveModelLabel(config.entry?.model)
-    : resolveModelLabel(config.defaults?.model);
-  const defaultModel = resolveModelLabel(config.defaults?.model);
+  const model = resolveEffectiveModelLabel(config.entry?.model, config.defaults?.model);
+  const defaultModel = resolveEffectiveModelLabel(undefined, config.defaults?.model);
   const entryPrimary = resolveModelPrimary(config.entry?.model);
   const defaultPrimary =
     resolveModelPrimary(config.defaults?.model) ||

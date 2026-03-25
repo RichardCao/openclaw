@@ -198,4 +198,40 @@ describe("renderAgentOverview", () => {
 
     expect(modelSelect?.value).toBe("");
   });
+
+  it("shows the inherited primary in the summary when an entry only overrides fallbacks", async () => {
+    const container = renderOverview({
+      agentId: "other",
+      defaultId: "main",
+      configForm: {
+        agents: {
+          defaults: {
+            model: {
+              primary: "openai-codex/gpt-5.4",
+            },
+            models: {
+              "google/gemini-2.5-pro": { alias: "gemini" },
+              "openai-codex/gpt-5.4": {},
+            },
+          },
+          list: [
+            {
+              id: "other",
+              model: {
+                fallbacks: ["google/gemini-2.5-pro"],
+              },
+            },
+          ],
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const modelValue = Array.from(container.querySelectorAll(".agent-kv")).find((node) =>
+      node.textContent?.includes("Primary Model"),
+    )?.lastElementChild?.textContent;
+
+    expect(modelValue?.trim()).toBe("openai-codex/gpt-5.4 (+1 fallback)");
+  });
 });
