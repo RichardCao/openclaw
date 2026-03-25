@@ -150,7 +150,7 @@ export function renderAgentOverview(params: {
                 configForm,
                 effectivePrimary ?? undefined,
                 params.modelCatalog,
-                selectedPrimary || null,
+                selectedPrimary,
               )}
             </select>
           </label>
