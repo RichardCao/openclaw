@@ -20,6 +20,13 @@ export const OPENCLAW_MODEL_ID = "openclaw";
 export const OPENCLAW_DEFAULT_MODEL_ID = "openclaw/default";
 const RESERVED_SESSION_KEY_PREFIXES = ["subagent:", "acp:", "cron:"] as const;
 
+export class GatewaySessionKeyOverrideError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GatewaySessionKeyOverrideError";
+  }
+}
+
 export function getHeader(req: IncomingMessage, name: string): string | undefined {
   const raw = req.headers[name.toLowerCase()];
   if (typeof raw === "string") {
@@ -140,7 +147,7 @@ export function resolveSessionKey(params: {
   if (explicit) {
     const reservedPrefix = resolveReservedSessionKeyPrefix(explicit);
     if (reservedPrefix) {
-      throw new Error(
+      throw new GatewaySessionKeyOverrideError(
         `x-openclaw-session-key may not target internal session namespace ${reservedPrefix}`,
       );
     }

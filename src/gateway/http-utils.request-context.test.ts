@@ -44,13 +44,32 @@ describe("resolveGatewayRequestContext", () => {
   });
 
   it("rejects explicit session keys that target internal session namespaces", () => {
-    expect(() =>
-      resolveGatewayRequestContext({
-        req: createReq({ "x-openclaw-session-key": "agent:main:subagent:worker" }),
-        model: "openclaw",
-        sessionPrefix: "openai",
-        defaultMessageChannel: "webchat",
-      }),
-    ).toThrow("x-openclaw-session-key may not target internal session namespace subagent:");
+    const cases = [
+      {
+        sessionKey: "agent:main:subagent:worker",
+        expectedPrefix: "subagent:",
+      },
+      {
+        sessionKey: "agent:main:acp:session",
+        expectedPrefix: "acp:",
+      },
+      {
+        sessionKey: "cron:daily",
+        expectedPrefix: "cron:",
+      },
+    ];
+
+    for (const testCase of cases) {
+      expect(() =>
+        resolveGatewayRequestContext({
+          req: createReq({ "x-openclaw-session-key": testCase.sessionKey }),
+          model: "openclaw",
+          sessionPrefix: "openai",
+          defaultMessageChannel: "webchat",
+        }),
+      ).toThrow(
+        `x-openclaw-session-key may not target internal session namespace ${testCase.expectedPrefix}`,
+      );
+    }
   });
 });

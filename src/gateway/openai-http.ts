@@ -27,7 +27,11 @@ import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
 import { sendJson, setSseHeaders, writeDone } from "./http-common.js";
 import { handleGatewayPostJsonEndpoint } from "./http-endpoint-helpers.js";
-import { resolveGatewayRequestContext, resolveOpenAiCompatModelOverride } from "./http-utils.js";
+import {
+  GatewaySessionKeyOverrideError,
+  resolveGatewayRequestContext,
+  resolveOpenAiCompatModelOverride,
+} from "./http-utils.js";
 import { normalizeInputHostnameAllowlist } from "./input-allowlist.js";
 
 type OpenAiHttpOptions = {
@@ -447,13 +451,16 @@ export async function handleOpenAiHttpRequest(
       useMessageChannelHeader: true,
     }));
   } catch (err) {
-    sendJson(res, 400, {
-      error: {
-        message: err instanceof Error ? err.message : "Invalid session context.",
-        type: "invalid_request_error",
-      },
-    });
-    return true;
+    if (err instanceof GatewaySessionKeyOverrideError) {
+      sendJson(res, 400, {
+        error: {
+          message: err.message,
+          type: "invalid_request_error",
+        },
+      });
+      return true;
+    }
+    throw err;
   }
   const { modelOverride, errorMessage: modelError } = await resolveOpenAiCompatModelOverride({
     req,
