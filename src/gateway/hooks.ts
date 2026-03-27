@@ -8,13 +8,13 @@ import { readJsonBodyWithLimit, requestBodyErrorToText } from "../infra/http-bod
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import type { HookExternalContentSource } from "../security/external-content.js";
 import { normalizeMessageChannel } from "../utils/message-channel.js";
+import { resolveReservedHookSessionKeyPrefix } from "./hook-session-key.js";
 import { type HookMappingResolved, resolveHookMappings } from "./hooks-mapping.js";
 import { resolveAllowedAgentIds } from "./hooks-policy.js";
 
 const DEFAULT_HOOKS_PATH = "/hooks";
 const DEFAULT_HOOKS_MAX_BODY_BYTES = 256 * 1024;
 const MAX_HOOK_IDEMPOTENCY_KEY_LENGTH = 256;
-const HOOK_RESERVED_SESSION_KEY_PREFIXES = ["subagent:", "acp:", "cron:"] as const;
 
 export type HooksConfigResolved = {
   basePath: string;
@@ -140,22 +140,6 @@ function isSessionKeyAllowedByPrefix(sessionKey: string, prefixes: string[]): bo
     return false;
   }
   return prefixes.some((prefix) => normalized.startsWith(prefix));
-}
-
-function normalizeHookValidatedSessionKey(raw: string | undefined): string | undefined {
-  const value = resolveSessionKey(raw);
-  if (!value) {
-    return undefined;
-  }
-  return parseAgentSessionKey(value)?.rest ?? value;
-}
-
-function resolveReservedHookSessionKeyPrefix(sessionKey: string | undefined): string | undefined {
-  const normalized = normalizeHookValidatedSessionKey(sessionKey)?.toLowerCase();
-  if (!normalized) {
-    return undefined;
-  }
-  return HOOK_RESERVED_SESSION_KEY_PREFIXES.find((prefix) => normalized.startsWith(prefix));
 }
 
 export function extractHookToken(req: IncomingMessage): string | undefined {
