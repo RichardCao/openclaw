@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { loadConfig } from "../config/config.js";
 import { loadSessionStore } from "../config/sessions.js";
-import { isAcpSessionKey, isCronSessionKey, isSubagentSessionKey } from "../routing/session-key.js";
+import { isInternalGatewaySessionKey } from "../routing/session-key.js";
 import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
@@ -28,12 +28,6 @@ import {
 } from "./session-utils.js";
 
 const MAX_SESSION_HISTORY_LIMIT = 1000;
-
-function isInternalSessionHistoryTarget(sessionKey: string): boolean {
-  return (
-    isSubagentSessionKey(sessionKey) || isCronSessionKey(sessionKey) || isAcpSessionKey(sessionKey)
-  );
-}
 
 function resolveSessionHistoryPath(req: IncomingMessage): string | null {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
@@ -193,7 +187,9 @@ export async function handleSessionHistoryHttpRequest(
     return true;
   }
 
-  if (isInternalSessionHistoryTarget(sessionKey)) {
+  const target = resolveGatewaySessionStoreTarget({ cfg, key: sessionKey });
+
+  if (isInternalGatewaySessionKey(sessionKey) || isInternalGatewaySessionKey(target.canonicalKey)) {
     sendJson(res, 403, {
       ok: false,
       error: {
@@ -204,7 +200,6 @@ export async function handleSessionHistoryHttpRequest(
     return true;
   }
 
-  const target = resolveGatewaySessionStoreTarget({ cfg, key: sessionKey });
   const store = loadSessionStore(target.storePath);
   const entry = resolveFreshestSessionEntryFromStoreKeys(store, target.storeKeys);
   if (!entry?.sessionId) {
