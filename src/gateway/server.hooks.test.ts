@@ -462,11 +462,16 @@ describe("gateway server hooks", () => {
     };
     setMainAndHooksAgents();
     await withGatewayServer(async ({ port }) => {
+      mockIsolatedRunOkOnce();
       const resNoAgent = await postHook(port, "/hooks/agent", { message: "No explicit agent" });
-      expect(resNoAgent.status).toBe(400);
-      const noAgentBody = (await resNoAgent.json()) as { error?: string };
-      expect(noAgentBody.error).toContain("hooks.allowedAgentIds");
-      expect(cronIsolatedRun).not.toHaveBeenCalled();
+      expect(resNoAgent.status).toBe(200);
+      await waitForSystemEvent();
+      const implicitCall = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { job?: { agentId?: string } }
+        | undefined;
+      expect(implicitCall?.job?.agentId).toBeUndefined();
+      expect(peekSystemEvents(resolveMainKey()).length).toBeGreaterThan(0);
+      drainSystemEvents(resolveMainKey());
 
       mockIsolatedRunOkOnce();
       const resAllowed = await postHook(port, "/hooks/agent", {
@@ -507,12 +512,18 @@ describe("gateway server hooks", () => {
       list: [{ id: "main", default: true }, { id: "hooks" }],
     };
     await withGatewayServer(async ({ port }) => {
-      const resImplicitDenied = await postHook(port, "/hooks/agent", {
-        message: "Implicit denied",
+      mockIsolatedRunOkOnce();
+      const resImplicitAllowed = await postHook(port, "/hooks/agent", {
+        message: "Implicit allowed",
       });
-      expect(resImplicitDenied.status).toBe(400);
-      const implicitDeniedBody = (await resImplicitDenied.json()) as { error?: string };
-      expect(implicitDeniedBody.error).toContain("hooks.allowedAgentIds");
+      expect(resImplicitAllowed.status).toBe(200);
+      await waitForSystemEvent();
+      const implicitCall = (cronIsolatedRun.mock.calls[0] as unknown[] | undefined)?.[0] as
+        | { job?: { agentId?: string } }
+        | undefined;
+      expect(implicitCall?.job?.agentId).toBeUndefined();
+      expect(peekSystemEvents(resolveMainKey()).length).toBeGreaterThan(0);
+      drainSystemEvents(resolveMainKey());
 
       const resDenied = await postHook(port, "/hooks/agent", {
         message: "Denied",
