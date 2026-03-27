@@ -633,6 +633,7 @@ describe("POST /tools/invoke", () => {
   it.each([
     "agent:main:subagent:worker",
     "agent:main:cron:daily",
+    "cron:daily",
     "agent:main:acp:session-1",
   ])("rejects internal session key override %s", async (sessionKey) => {
     allowAgentsListForMain();
