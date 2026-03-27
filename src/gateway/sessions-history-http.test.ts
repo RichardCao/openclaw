@@ -54,6 +54,28 @@ async function seedSession(params?: { text?: string }) {
   return { storePath };
 }
 
+async function seedNamedSession(params: { sessionKey: string; sessionId: string; text?: string }) {
+  const storePath = await createSessionStoreFile();
+  await writeSessionStore({
+    entries: {
+      [params.sessionKey]: {
+        sessionId: params.sessionId,
+        updatedAt: Date.now(),
+      },
+    },
+    storePath,
+  });
+  if (params.text) {
+    const appended = await appendAssistantMessageToSessionTranscript({
+      sessionKey: params.sessionKey,
+      text: params.text,
+      storePath,
+    });
+    expect(appended.ok).toBe(true);
+  }
+  return { storePath };
+}
+
 async function fetchSessionHistory(
   port: number,
   sessionKey: string,
@@ -169,6 +191,30 @@ describe("session history HTTP endpoints", () => {
         error: {
           type: "not_found",
           message: "Session not found: agent:main:missing",
+        },
+      });
+    });
+  });
+
+  test.each([
+    { sessionKey: "agent:main:subagent:worker", sessionId: "sess-subagent" },
+    { sessionKey: "agent:main:cron:daily", sessionId: "sess-cron" },
+    { sessionKey: "agent:main:acp:session-1", sessionId: "sess-acp" },
+  ])("rejects internal session history over HTTP for $sessionKey", async ({ sessionKey, sessionId }) => {
+    await seedNamedSession({
+      sessionKey,
+      sessionId,
+      text: "internal session transcript",
+    });
+
+    await withGatewayHarness(async (harness) => {
+      const res = await fetchSessionHistory(harness.port, sessionKey);
+      expect(res.status).toBe(403);
+      await expect(res.json()).resolves.toMatchObject({
+        ok: false,
+        error: {
+          type: "forbidden",
+          message: "internal sessions are not available over HTTP history",
         },
       });
     });
