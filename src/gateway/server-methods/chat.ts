@@ -14,7 +14,6 @@ import { resolveSessionFilePath } from "../../config/sessions.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import { type SavedMedia, saveMediaBuffer } from "../../media/store.js";
 import { createChannelReplyPipeline } from "../../plugin-sdk/channel-reply-pipeline.js";
-import { isInternalGatewaySessionKey } from "../../routing/session-key.js";
 import { normalizeInputProvenance, type InputProvenance } from "../../sessions/input-provenance.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { parseAgentSessionKey } from "../../sessions/session-key-utils.js";
@@ -1109,17 +1108,6 @@ export const chatHandlers: GatewayRequestHandlers = {
       sessionKey: string;
       limit?: number;
     };
-    if (isInternalGatewaySessionKey(sessionKey)) {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          ErrorCodes.INVALID_REQUEST,
-          "internal sessions are not available via chat.history",
-        ),
-      );
-      return;
-    }
     const { cfg, storePath, entry } = loadSessionEntry(sessionKey);
     const sessionId = entry?.sessionId;
     const sessionAgentId = resolveSessionAgentId({ sessionKey, config: cfg });
