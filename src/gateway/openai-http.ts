@@ -434,14 +434,27 @@ export async function handleOpenAiHttpRequest(
   const model = typeof payload.model === "string" ? payload.model : "openclaw";
   const user = typeof payload.user === "string" ? payload.user : undefined;
 
-  const { agentId, sessionKey, messageChannel } = resolveGatewayRequestContext({
-    req,
-    model,
-    user,
-    sessionPrefix: "openai",
-    defaultMessageChannel: "webchat",
-    useMessageChannelHeader: true,
-  });
+  let agentId: string;
+  let sessionKey: string;
+  let messageChannel: string;
+  try {
+    ({ agentId, sessionKey, messageChannel } = resolveGatewayRequestContext({
+      req,
+      model,
+      user,
+      sessionPrefix: "openai",
+      defaultMessageChannel: "webchat",
+      useMessageChannelHeader: true,
+    }));
+  } catch (err) {
+    sendJson(res, 400, {
+      error: {
+        message: err instanceof Error ? err.message : "Invalid session context.",
+        type: "invalid_request_error",
+      },
+    });
+    return true;
+  }
   const { modelOverride, errorMessage: modelError } = await resolveOpenAiCompatModelOverride({
     req,
     agentId,

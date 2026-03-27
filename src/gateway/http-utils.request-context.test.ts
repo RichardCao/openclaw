@@ -42,4 +42,15 @@ describe("resolveGatewayRequestContext", () => {
 
     expect(result.sessionKey).toContain("openresponses-user:alice");
   });
+
+  it("rejects explicit session keys that target internal session namespaces", () => {
+    expect(() =>
+      resolveGatewayRequestContext({
+        req: createReq({ "x-openclaw-session-key": "agent:main:subagent:worker" }),
+        model: "openclaw",
+        sessionPrefix: "openai",
+        defaultMessageChannel: "webchat",
+      }),
+    ).toThrow("x-openclaw-session-key may not target internal session namespace subagent:");
+  });
 });

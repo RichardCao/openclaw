@@ -624,14 +624,25 @@ export async function handleOpenResponsesHttpRequest(
     });
     return true;
   }
-  const resolved = resolveGatewayRequestContext({
-    req,
-    model,
-    user,
-    sessionPrefix: "openresponses",
-    defaultMessageChannel: "webchat",
-    useMessageChannelHeader: true,
-  });
+  let resolved: ReturnType<typeof resolveGatewayRequestContext>;
+  try {
+    resolved = resolveGatewayRequestContext({
+      req,
+      model,
+      user,
+      sessionPrefix: "openresponses",
+      defaultMessageChannel: "webchat",
+      useMessageChannelHeader: true,
+    });
+  } catch (err) {
+    sendJson(res, 400, {
+      error: {
+        message: err instanceof Error ? err.message : "Invalid session context.",
+        type: "invalid_request_error",
+      },
+    });
+    return true;
+  }
   const responseSessionScope = createResponseSessionScope({
     req,
     auth: opts.auth,
