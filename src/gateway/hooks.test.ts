@@ -266,6 +266,13 @@ describe("gateway hooks helpers", () => {
         sessionKey: "cron:daily",
       }),
     ).toMatchObject({ ok: false });
+    expect(
+      resolveHookSessionKey({
+        hooksConfig: resolved,
+        source: "request",
+        sessionKey: "agent:main:agent:hooks:subagent:worker",
+      }),
+    ).toMatchObject({ ok: false });
   });
 
   test("resolveHookSessionKey enforces allowed prefixes", () => {
@@ -369,6 +376,16 @@ describe("gateway hooks helpers", () => {
           enabled: true,
           token: "secret",
           defaultSessionKey: "agent:main:subagent:worker",
+          allowedSessionKeyPrefixes: ["hook:", "agent:"],
+        },
+      } as OpenClawConfig),
+    ).toThrow("hooks.defaultSessionKey may not target internal session namespace subagent:");
+    expect(() =>
+      resolveHooksConfig({
+        hooks: {
+          enabled: true,
+          token: "secret",
+          defaultSessionKey: "agent:main:agent:hooks:subagent:worker",
           allowedSessionKeyPrefixes: ["hook:", "agent:"],
         },
       } as OpenClawConfig),
