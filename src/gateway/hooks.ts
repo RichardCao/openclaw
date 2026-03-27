@@ -14,6 +14,7 @@ import { resolveAllowedAgentIds } from "./hooks-policy.js";
 const DEFAULT_HOOKS_PATH = "/hooks";
 const DEFAULT_HOOKS_MAX_BODY_BYTES = 256 * 1024;
 const MAX_HOOK_IDEMPOTENCY_KEY_LENGTH = 256;
+const HOOK_RESERVED_SESSION_KEY_PREFIXES = ["subagent:", "acp:", "cron:"] as const;
 
 export type HooksConfigResolved = {
   basePath: string;
@@ -68,6 +69,12 @@ export function resolveHooksConfig(cfg: OpenClawConfig): HooksConfigResolved | n
     !isSessionKeyAllowedByPrefix(defaultSessionKey, allowedSessionKeyPrefixes)
   ) {
     throw new Error("hooks.defaultSessionKey must match hooks.allowedSessionKeyPrefixes");
+  }
+  const reservedDefaultSessionPrefix = resolveReservedHookSessionKeyPrefix(defaultSessionKey);
+  if (reservedDefaultSessionPrefix) {
+    throw new Error(
+      `hooks.defaultSessionKey may not target internal session namespace ${reservedDefaultSessionPrefix}`,
+    );
   }
   if (
     !defaultSessionKey &&
@@ -133,6 +140,22 @@ function isSessionKeyAllowedByPrefix(sessionKey: string, prefixes: string[]): bo
     return false;
   }
   return prefixes.some((prefix) => normalized.startsWith(prefix));
+}
+
+function normalizeHookValidatedSessionKey(raw: string | undefined): string | undefined {
+  const value = resolveSessionKey(raw);
+  if (!value) {
+    return undefined;
+  }
+  return parseAgentSessionKey(value)?.rest ?? value;
+}
+
+function resolveReservedHookSessionKeyPrefix(sessionKey: string | undefined): string | undefined {
+  const normalized = normalizeHookValidatedSessionKey(sessionKey)?.toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  return HOOK_RESERVED_SESSION_KEY_PREFIXES.find((prefix) => normalized.startsWith(prefix));
 }
 
 export function extractHookToken(req: IncomingMessage): string | undefined {
@@ -304,6 +327,8 @@ export const getHookSessionKeyRequestPolicyError = () =>
   "sessionKey is disabled for external /hooks/agent payloads; set hooks.allowRequestSessionKey=true to enable";
 export const getHookSessionKeyPrefixError = (prefixes: string[]) =>
   `sessionKey must start with one of: ${prefixes.join(", ")}`;
+export const getHookSessionKeyReservedPrefixError = (prefix: string) =>
+  `sessionKey may not target internal session namespace ${prefix}`;
 
 export function resolveHookSessionKey(params: {
   hooksConfig: HooksConfigResolved;
@@ -319,6 +344,10 @@ export function resolveHookSessionKey(params: {
     const allowedPrefixes = params.hooksConfig.sessionPolicy.allowedSessionKeyPrefixes;
     if (allowedPrefixes && !isSessionKeyAllowedByPrefix(requested, allowedPrefixes)) {
       return { ok: false, error: getHookSessionKeyPrefixError(allowedPrefixes) };
+    }
+    const reservedPrefix = resolveReservedHookSessionKeyPrefix(requested);
+    if (reservedPrefix) {
+      return { ok: false, error: getHookSessionKeyReservedPrefixError(reservedPrefix) };
     }
     return { ok: true, value: requested };
   }
